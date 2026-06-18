@@ -6,6 +6,7 @@
 //! (notably [`FixedClock`]) so behaviour is deterministic.
 
 use crate::error::CoreResult;
+use crate::model::Deck;
 
 /// Source of "now", injectable so scheduler tests are deterministic across the
 /// day cutoff and time zones. The engine must never read the wall clock except
@@ -40,10 +41,25 @@ impl Clock for FixedClock {
 }
 
 /// Transactional persistence for the collection. Implemented by `synapse-db`
-/// over SQLite. Methods are added as the application layer needs them (M1+).
+/// over SQLite. The method set grows per milestone; M1 covers schema access and
+/// deck CRUD (the vertical slice that proves the stack end to end).
+///
+/// Methods take `&self`: the implementation owns interior mutability (a
+/// `Mutex<Connection>`), which keeps the trait object `Send + Sync` and the
+/// application layer free of borrow-checker juggling.
 pub trait Storage: Send + Sync {
-    /// Returns the current schema/user version of the open database.
+    /// The database `user_version` (our migration revision).
     fn schema_version(&self) -> CoreResult<i64>;
+
+    /// Insert a new deck with the given full name; returns the stored row.
+    fn create_deck(&self, name: &str, now_ms: i64) -> CoreResult<Deck>;
+    fn deck_by_id(&self, id: i64) -> CoreResult<Option<Deck>>;
+    fn deck_by_name(&self, name: &str) -> CoreResult<Option<Deck>>;
+    fn list_decks(&self) -> CoreResult<Vec<Deck>>;
+    fn rename_deck(&self, id: i64, name: &str, now_ms: i64) -> CoreResult<()>;
+    fn remove_deck(&self, id: i64) -> CoreResult<()>;
+    /// Re-insert a deck verbatim (used to undo a deletion).
+    fn insert_deck(&self, deck: &Deck) -> CoreResult<()>;
 }
 
 /// On-disk media store (checksums, dedup, cleanup). Implemented by

@@ -2,16 +2,83 @@
 //! [`ts_rs::TS`] with `#[ts(export)]`, so `cargo test` regenerates the matching
 //! TypeScript in `packages/ipc-types/src/generated/`. The Rust definitions are
 //! the single source of truth; a mismatch breaks the TS build (intended).
+//!
+//! 64-bit ids are annotated `#[ts(type = "number")]`: serde serialises them as
+//! JSON numbers, and Anki-style ids (epoch-ms, < 2^53) are exact in JS.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::error::CoreError;
+use crate::model::Deck;
+
 /// Basic identity of the running application, surfaced on the home screen and
-/// the About page. Also the M0 end-to-end proof of the IPC + ts-rs pipeline.
+/// the About page.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AppInfo {
     pub name: String,
     pub version: String,
     pub tauri_version: String,
+}
+
+/// A deck as shown in the deck browser / sidebar tree.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DeckSummary {
+    #[ts(type = "number")]
+    pub id: i64,
+    pub name: String,
+    #[ts(type = "number | null")]
+    pub parent_id: Option<i64>,
+}
+
+impl From<Deck> for DeckSummary {
+    fn from(deck: Deck) -> Self {
+        Self {
+            id: deck.id,
+            name: deck.name,
+            parent_id: deck.parent_id,
+        }
+    }
+}
+
+/// The serialisable error union returned across the IPC boundary. The frontend
+/// receives `{ kind, message }` and can branch on `kind`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct IpcError {
+    pub kind: IpcErrorKind,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum IpcErrorKind {
+    NotOpen,
+    Storage,
+    Format,
+    Scheduler,
+    NotFound,
+    Invalid,
+    Internal,
+}
+
+impl From<CoreError> for IpcError {
+    fn from(error: CoreError) -> Self {
+        let kind = match &error {
+            CoreError::NotOpen => IpcErrorKind::NotOpen,
+            CoreError::Storage(_) => IpcErrorKind::Storage,
+            CoreError::Format(_) => IpcErrorKind::Format,
+            CoreError::Scheduler(_) => IpcErrorKind::Scheduler,
+            CoreError::NotFound(_) => IpcErrorKind::NotFound,
+            CoreError::Invalid(_) => IpcErrorKind::Invalid,
+            CoreError::Other(_) => IpcErrorKind::Internal,
+        };
+        Self {
+            kind,
+            message: error.to_string(),
+        }
+    }
 }

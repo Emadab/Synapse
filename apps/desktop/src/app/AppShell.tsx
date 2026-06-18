@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
 import { Kbd } from "@/components/Kbd";
+import { useCoreEvents } from "@/lib/useCoreEvents";
 import { useTheme } from "@/stores/theme";
 
 const nav = [
@@ -26,6 +27,7 @@ const nav = [
 /** Root layout: persistent sidebar + header, routed content in the outlet. */
 export function AppShell() {
   const { resolved, setTheme } = useTheme();
+  useCoreEvents();
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">

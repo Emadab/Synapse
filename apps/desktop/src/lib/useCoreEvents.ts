@@ -1,0 +1,35 @@
+import { useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useQueryClient } from "@tanstack/react-query";
+import { isTauri } from "@/lib/ipc";
+import { queryKeys } from "@/lib/queryKeys";
+
+/**
+ * Subscribe to core domain events (re-emitted by the Tauri shell) and map them
+ * to TanStack Query cache invalidations. This is how the UI stays live without
+ * polling — the Rust core is the source of truth. Mount once in the AppShell.
+ */
+export function useCoreEvents() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    const unlisten = listen<string>("synapse://event", ({ payload }) => {
+      if (payload === "deck-changed" || payload === "schema-changed") {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.decks });
+      }
+      if (
+        payload === "card-answered" ||
+        payload === "notes-changed" ||
+        payload === "schema-changed"
+      ) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.stats });
+      }
+    });
+
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, [queryClient]);
+}

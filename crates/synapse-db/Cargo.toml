@@ -9,4 +9,6 @@ repository.workspace = true
 
 [dependencies]
 synapse-core.workspace = true
-# rusqlite (bundled SQLite) is added in M1, when the canonical schema lands.
+serde_json.workspace = true
+# Bundled SQLite: compiled from source via cc (MSVC/clang). No system SQLite needed.
+rusqlite = { version = "0.32", features = ["bundled"] }

@@ -2,6 +2,6 @@
 
 /**
  * Basic identity of the running application, surfaced on the home screen and
- * the About page. Also the M0 end-to-end proof of the IPC + ts-rs pipeline.
+ * the About page.
  */
 export type AppInfo = { name: string, version: string, tauri_version: string, };

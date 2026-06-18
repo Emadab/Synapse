@@ -1,6 +1,9 @@
-//! Domain model. M0 establishes the stable, cross-cutting enums shared by the
-//! scheduler, the IPC layer and the UI. Entities (Note, Card, Deck, Notetype,
-//! Template, Revlog) land in M1 alongside the canonical schema.
+//! Domain model. M0 established the cross-cutting enums; M1 adds the deck
+//! entities (see [`entities`]). Remaining entities (Note, Card, Notetype,
+//! Template, Revlog) arrive with import in M2.
+
+pub mod entities;
+pub use entities::{Deck, DeckConfig};
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
