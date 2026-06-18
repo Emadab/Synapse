@@ -1,0 +1,12 @@
+[package]
+name = "synapse-render"
+description = "Card template rendering: field substitution, cloze, conditionals, LaTeX — Anki-template compatible."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+synapse-core.workspace = true
+# regex / html escaping are added when rendering lands (M4).

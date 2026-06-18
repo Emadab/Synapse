@@ -1,0 +1,6 @@
+# ts-rs writes all generated TypeScript bindings here. `relative = true` makes
+# cargo resolve this against the repo root (the parent of this .cargo dir) and
+# pass it to the build as an absolute path, so `cargo test` regenerates the
+# frontend's `@synapse/ipc-types` deterministically regardless of CWD.
+[env]
+TS_RS_EXPORT_DIR = { value = "packages/ipc-types/src/generated", relative = true }

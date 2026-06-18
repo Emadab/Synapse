@@ -1,0 +1,30 @@
+# Rust / Cargo (workspace target at repo root)
+/target
+**/*.rs.bk
+
+# Node
+node_modules/
+.pnpm-store/
+
+# Frontend build output
+apps/*/dist/
+dist/
+
+# Tauri generated
+apps/*/src-tauri/gen/
+
+# Test / coverage
+coverage/
+playwright-report/
+test-results/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.log
+.vscode/*
+!.vscode/extensions.json
+
+# Local scratch (never commit user data here). Note: test fixtures under
+# /fixtures ARE committed (round-trip gate needs real .apkg/.colpkg samples).
+/scratch/

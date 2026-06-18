@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/synapse-core",
+    "crates/synapse-db",
+    "crates/synapse-scheduler",
+    "crates/synapse-ankifmt",
+    "crates/synapse-search",
+    "crates/synapse-media",
+    "crates/synapse-render",
+    "crates/synapse-plugin",
+    "apps/desktop/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Synapse contributors"]
+repository = "https://github.com/synapse-srs/synapse"
+rust-version = "1.80"
+
+# Shared dependency versions. Crates opt in with `<dep>.workspace = true`.
+# Heavy/feature-specific deps (rusqlite, tantivy, zip, fsrs, …) are added to the
+# individual crate that owns that concern, in the milestone that introduces it.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+ts-rs = "10"
+
+# Internal crates
+synapse-core = { path = "crates/synapse-core" }
+synapse-db = { path = "crates/synapse-db" }
+synapse-scheduler = { path = "crates/synapse-scheduler" }
+synapse-ankifmt = { path = "crates/synapse-ankifmt" }
+synapse-search = { path = "crates/synapse-search" }
+synapse-media = { path = "crates/synapse-media" }
+synapse-render = { path = "crates/synapse-render" }
+synapse-plugin = { path = "crates/synapse-plugin" }
+
+[profile.dev]
+# Faster incremental rebuilds while keeping debuggability.
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

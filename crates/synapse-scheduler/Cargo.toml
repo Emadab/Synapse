@@ -1,0 +1,11 @@
+[package]
+name = "synapse-scheduler"
+description = "Pure spaced-repetition scheduling (SM-2, FSRS). No IO, no time except via the injected Clock port."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+synapse-core.workspace = true

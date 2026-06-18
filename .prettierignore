@@ -1,0 +1,6 @@
+dist
+target
+node_modules
+pnpm-lock.yaml
+packages/ipc-types/src/generated
+apps/desktop/src-tauri/gen

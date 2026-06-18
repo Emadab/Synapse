@@ -1,0 +1,12 @@
+{
+  "name": "@synapse/ui-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Design tokens (palette, spacing, radii, motion). Canonical reference shared by Tailwind, charts and any platform-specific UI.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

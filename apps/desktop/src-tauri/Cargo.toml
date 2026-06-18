@@ -1,0 +1,28 @@
+[package]
+name = "desktop"
+description = "Synapse desktop shell (Tauri). Thin adapter: registers IPC commands that delegate to synapse-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+# The `_lib` suffix keeps the lib name unique from the bin name on Windows.
+# See https://github.com/rust-lang/cargo/issues/8519
+name = "desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde.workspace = true
+serde_json.workspace = true
+
+# Synapse core engine + a concrete scheduler. The shell never contains domain
+# logic; it only (de)serialises and delegates.
+synapse-core.workspace = true
+synapse-scheduler.workspace = true

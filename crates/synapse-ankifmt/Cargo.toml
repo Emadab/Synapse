@@ -1,0 +1,12 @@
+[package]
+name = "synapse-ankifmt"
+description = "Anki .apkg/.colpkg import & export. Detects schema v11/v18, maps to/from the canonical model."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+synapse-core.workspace = true
+# zip / zstd / rusqlite / prost are added in M2 (import) and M6 (export).

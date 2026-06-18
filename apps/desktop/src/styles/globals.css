@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Semantic theme tokens. Light is the default; `.dark` on <html> flips them.
+   Values are HSL triplets so Tailwind can wrap them with hsl(var(--token)). */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 24% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 24% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 24% 12%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 224 24% 16%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 224 24% 16%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 243 75% 59%;
+    --radius: 0.65rem;
+
+    --sidebar: 220 20% 98%;
+    --sidebar-foreground: 224 16% 28%;
+    --sidebar-accent: 220 14% 94%;
+  }
+
+  .dark {
+    --background: 224 28% 7%;
+    --foreground: 220 16% 92%;
+    --card: 224 26% 9%;
+    --card-foreground: 220 16% 92%;
+    --popover: 224 26% 9%;
+    --popover-foreground: 220 16% 92%;
+    --primary: 243 80% 70%;
+    --primary-foreground: 224 40% 10%;
+    --secondary: 222 20% 16%;
+    --secondary-foreground: 220 16% 92%;
+    --muted: 222 20% 16%;
+    --muted-foreground: 220 12% 60%;
+    --accent: 222 20% 18%;
+    --accent-foreground: 220 16% 92%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 222 18% 18%;
+    --input: 222 18% 20%;
+    --ring: 243 80% 70%;
+
+    --sidebar: 224 30% 6%;
+    --sidebar-foreground: 220 14% 70%;
+    --sidebar-accent: 222 20% 14%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+  }
+
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  /* Honour reduced-motion: disable non-essential animations. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}

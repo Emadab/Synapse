@@ -1,0 +1,12 @@
+[package]
+name = "synapse-media"
+description = "Media store: checksums, dedup, unused-media cleanup. Implements core's MediaStore port."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+synapse-core.workspace = true
+# sha1/blake3 + fs walking are added when media handling lands (M2/M5).
