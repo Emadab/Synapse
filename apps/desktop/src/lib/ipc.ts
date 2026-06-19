@@ -5,6 +5,8 @@ import type {
   DeckSummary,
   ImportSummary,
   IpcError,
+  NoteDetail,
+  NoteOverview,
   StudyCardDto,
 } from "@synapse/ipc-types";
 
@@ -33,6 +35,12 @@ export const ipc = {
   getNextCard: (deckId: number) => invoke<StudyCardDto | null>("get_next_card", { deckId }),
   answerCard: (cardId: number, rating: RatingValue) =>
     invoke<StudyCardDto | null>("answer_card", { cardId, rating }),
+
+  // Browser / editor
+  listNotes: (query?: string) => invoke<NoteOverview[]>("list_notes", { query: query ?? null }),
+  getNote: (noteId: number) => invoke<NoteDetail | null>("get_note", { noteId }),
+  saveNote: (noteId: number, fields: string[], tags: string[]) =>
+    invoke<void>("save_note", { noteId, fields, tags }),
 
   // Undo
   undo: () => invoke<string | null>("undo"),

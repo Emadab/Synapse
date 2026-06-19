@@ -10,12 +10,13 @@ use std::sync::{Mutex, MutexGuard};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use synapse_core::error::{CoreError, CoreResult};
+use synapse_core::ipc::{NoteDetail, NoteOverview};
 use synapse_core::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
 use synapse_core::ports::Storage;
 use synapse_core::scheduling::CardState;
 
 use crate::schema::grave_kind;
-use crate::{import, migrations, study};
+use crate::{browse, import, migrations, study};
 
 const DECK_COLUMNS: &str = r#"id, name, parent_id, config_id, "mod", usn, collapsed, is_filtered"#;
 
@@ -232,6 +233,24 @@ impl Storage for SqliteStorage {
         study::apply_answer(&tx, card_id, next, due, log)?;
         tx.commit().map_err(storage_err)?;
         Ok(())
+    }
+
+    fn list_notes(&self, query: Option<&str>, limit: i64) -> CoreResult<Vec<NoteOverview>> {
+        browse::list_notes(&self.lock(), query, limit)
+    }
+
+    fn note_detail(&self, note_id: i64) -> CoreResult<Option<NoteDetail>> {
+        browse::note_detail(&self.lock(), note_id)
+    }
+
+    fn update_note(
+        &self,
+        note_id: i64,
+        fields: &[String],
+        tags: &[String],
+        now_ms: i64,
+    ) -> CoreResult<()> {
+        browse::update_note(&self.lock(), note_id, fields, tags, now_ms)
     }
 }
 

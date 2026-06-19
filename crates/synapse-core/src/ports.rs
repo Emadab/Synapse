@@ -6,6 +6,7 @@
 //! (notably [`FixedClock`]) so behaviour is deterministic.
 
 use crate::error::CoreResult;
+use crate::ipc::{NoteDetail, NoteOverview};
 use crate::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
 use crate::scheduling::CardState;
 
@@ -86,6 +87,22 @@ pub trait Storage: Send + Sync {
         next: &CardState,
         due: i64,
         log: &Revlog,
+    ) -> CoreResult<()>;
+
+    /// List notes for the browser, optionally filtered by a substring of the
+    /// fields/tags, newest first, capped at `limit`.
+    fn list_notes(&self, query: Option<&str>, limit: i64) -> CoreResult<Vec<NoteOverview>>;
+
+    /// Full note (ordered fields + tags + note-type name) for the editor.
+    fn note_detail(&self, note_id: i64) -> CoreResult<Option<NoteDetail>>;
+
+    /// Update a note's field values (in order) and tags.
+    fn update_note(
+        &self,
+        note_id: i64,
+        fields: &[String],
+        tags: &[String],
+        now_ms: i64,
     ) -> CoreResult<()>;
 }
 

@@ -3,6 +3,7 @@
 //! contain domain logic. Errors surface as the typed `IpcError` union.
 
 pub mod app;
+pub mod browse;
 pub mod deck;
 pub mod import;
 pub mod study;

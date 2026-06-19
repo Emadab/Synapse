@@ -10,3 +10,6 @@ export type { ImportSummary } from "./generated/ImportSummary";
 export type { IpcError } from "./generated/IpcError";
 export type { IpcErrorKind } from "./generated/IpcErrorKind";
 export type { StudyCardDto } from "./generated/StudyCardDto";
+export type { NoteField } from "./generated/NoteField";
+export type { NoteOverview } from "./generated/NoteOverview";
+export type { NoteDetail } from "./generated/NoteDetail";

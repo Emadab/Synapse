@@ -60,6 +60,36 @@ pub struct StudyCardDto {
     pub easy: String,
 }
 
+/// A single note field (name + HTML value), in note order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NoteField {
+    pub name: String,
+    pub value: String,
+}
+
+/// A row in the card/note browser.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NoteOverview {
+    #[ts(type = "number")]
+    pub note_id: i64,
+    /// Display value (the note's sort field), may contain HTML.
+    pub sort_field: String,
+    pub tags: Vec<String>,
+}
+
+/// Full note for the editor: ordered fields + tags + its note type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NoteDetail {
+    #[ts(type = "number")]
+    pub note_id: i64,
+    pub notetype_name: String,
+    pub fields: Vec<NoteField>,
+    pub tags: Vec<String>,
+}
+
 /// The serialisable error union returned across the IPC boundary. The frontend
 /// receives `{ kind, message }` and can branch on `kind`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

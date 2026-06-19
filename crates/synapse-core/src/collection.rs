@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{CoreError, CoreResult};
 use crate::events::{DomainEvent, EventBus, EventSink};
+use crate::ipc::{NoteDetail, NoteOverview};
 use crate::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
 use crate::ports::{Clock, Storage};
 use crate::scheduling::CardState;
@@ -63,6 +64,24 @@ impl Collection {
     /// Render inputs + scheduling state for a specific card.
     pub fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>> {
         self.storage.study_card(card_id)
+    }
+
+    /// Notes for the browser, optionally filtered by a substring.
+    pub fn list_notes(&self, query: Option<&str>) -> CoreResult<Vec<NoteOverview>> {
+        self.storage.list_notes(query, 1000)
+    }
+
+    /// Full note for the editor.
+    pub fn note_detail(&self, note_id: i64) -> CoreResult<Option<NoteDetail>> {
+        self.storage.note_detail(note_id)
+    }
+
+    /// Save edited note field values + tags.
+    pub fn update_note(&self, note_id: i64, fields: &[String], tags: &[String]) -> CoreResult<()> {
+        self.storage
+            .update_note(note_id, fields, tags, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::NoteUpdated { note_id });
+        Ok(())
     }
 
     /// Persist an answered card's new state + review log, then notify.
@@ -284,6 +303,21 @@ mod tests {
             _next: &CardState,
             _due: i64,
             _log: &Revlog,
+        ) -> CoreResult<()> {
+            Ok(())
+        }
+        fn list_notes(&self, _query: Option<&str>, _limit: i64) -> CoreResult<Vec<NoteOverview>> {
+            Ok(vec![])
+        }
+        fn note_detail(&self, _note_id: i64) -> CoreResult<Option<NoteDetail>> {
+            Ok(None)
+        }
+        fn update_note(
+            &self,
+            _note_id: i64,
+            _fields: &[String],
+            _tags: &[String],
+            _now_ms: i64,
         ) -> CoreResult<()> {
             Ok(())
         }

@@ -60,6 +60,9 @@ pub fn run() {
             commands::import::import_package,
             commands::study::get_next_card,
             commands::study::answer_card,
+            commands::browse::list_notes,
+            commands::browse::get_note,
+            commands::browse::save_note,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
