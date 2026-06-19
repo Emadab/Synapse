@@ -10,29 +10,72 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{CoreError, CoreResult};
 use crate::events::{DomainEvent, EventBus, EventSink};
-use crate::model::{CanonicalModel, Deck, ImportSummary};
+use crate::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
 use crate::ports::{Clock, Storage};
+use crate::scheduling::CardState;
 use crate::undo::UndoLog;
+
+const MS_PER_DAY: i64 = 86_400_000;
 
 pub struct Collection {
     storage: Box<dyn Storage>,
     clock: Arc<dyn Clock>,
     events: Arc<EventBus>,
     undo: Mutex<UndoLog>,
+    /// Collection creation time (ms); anchors the scheduling day-number.
+    created_ms: i64,
 }
 
 impl Collection {
-    /// Build a collection over the given storage + clock. Emits
-    /// [`DomainEvent::CollectionOpened`].
+    /// Build a collection over the given storage + clock. Ensures the
+    /// collection row exists and emits [`DomainEvent::CollectionOpened`].
     pub fn new(storage: Box<dyn Storage>, clock: Arc<dyn Clock>) -> Self {
+        let created_ms = storage.ensure_collection(clock.now_ms()).unwrap_or(0);
         let collection = Self {
             storage,
             clock,
             events: Arc::new(EventBus::new()),
             undo: Mutex::new(UndoLog::default()),
+            created_ms,
         };
         collection.events.emit(DomainEvent::CollectionOpened);
         collection
+    }
+
+    /// Today's day-number (days since collection creation).
+    pub fn today(&self) -> i32 {
+        ((self.clock.now_ms() - self.created_ms) / MS_PER_DAY) as i32
+    }
+
+    /// Current wall-clock time in ms (from the injected clock).
+    pub fn now_ms(&self) -> i64 {
+        self.clock.now_ms()
+    }
+
+    /// The next card to study in a deck, if any.
+    pub fn next_card(&self, deck_id: i64) -> CoreResult<Option<StudyCard>> {
+        match self.storage.due_card_ids(deck_id, self.today())?.first() {
+            Some(&id) => self.storage.study_card(id),
+            None => Ok(None),
+        }
+    }
+
+    /// Render inputs + scheduling state for a specific card.
+    pub fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>> {
+        self.storage.study_card(card_id)
+    }
+
+    /// Persist an answered card's new state + review log, then notify.
+    pub fn apply_answer(
+        &self,
+        card_id: i64,
+        next: &CardState,
+        due: i64,
+        log: &Revlog,
+    ) -> CoreResult<()> {
+        self.storage.apply_answer(card_id, next, due, log)?;
+        self.events.emit(DomainEvent::CardAnswered { card_id });
+        Ok(())
     }
 
     /// Shared handle to the event bus, for wiring external subscribers
@@ -225,6 +268,24 @@ mod tests {
             }
             summary.notes_added = model.notes.len() as u32;
             Ok(summary)
+        }
+        fn ensure_collection(&self, _now_ms: i64) -> CoreResult<i64> {
+            Ok(0)
+        }
+        fn due_card_ids(&self, _deck_id: i64, _today: i32) -> CoreResult<Vec<i64>> {
+            Ok(vec![])
+        }
+        fn study_card(&self, _card_id: i64) -> CoreResult<Option<StudyCard>> {
+            Ok(None)
+        }
+        fn apply_answer(
+            &self,
+            _card_id: i64,
+            _next: &CardState,
+            _due: i64,
+            _log: &Revlog,
+        ) -> CoreResult<()> {
+            Ok(())
         }
     }
 

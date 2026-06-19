@@ -1,6 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { AppInfo, DeckSummary, ImportSummary, IpcError } from "@synapse/ipc-types";
+import type {
+  AppInfo,
+  DeckSummary,
+  ImportSummary,
+  IpcError,
+  StudyCardDto,
+} from "@synapse/ipc-types";
+
+/** Answer-button rating values (match Rust `Rating`). */
+export const Rating = { Again: 1, Hard: 2, Good: 3, Easy: 4 } as const;
+export type RatingValue = (typeof Rating)[keyof typeof Rating];
 
 /**
  * Typed wrapper over Tauri's `invoke`. The UI imports from here and never calls
@@ -18,6 +28,11 @@ export const ipc = {
 
   // Import
   importPackage: (path: string) => invoke<ImportSummary>("import_package", { path }),
+
+  // Study
+  getNextCard: (deckId: number) => invoke<StudyCardDto | null>("get_next_card", { deckId }),
+  answerCard: (cardId: number, rating: RatingValue) =>
+    invoke<StudyCardDto | null>("answer_card", { cardId, rating }),
 
   // Undo
   undo: () => invoke<string | null>("undo"),

@@ -29,3 +29,4 @@ synapse-core.workspace = true
 synapse-db.workspace = true
 synapse-ankifmt.workspace = true
 synapse-scheduler.workspace = true
+synapse-render.workspace = true

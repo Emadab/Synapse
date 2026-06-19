@@ -6,7 +6,8 @@
 //! (notably [`FixedClock`]) so behaviour is deterministic.
 
 use crate::error::CoreResult;
-use crate::model::{CanonicalModel, Deck, ImportSummary};
+use crate::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
+use crate::scheduling::CardState;
 
 /// Source of "now", injectable so scheduler tests are deterministic across the
 /// day cutoff and time zones. The engine must never read the wall clock except
@@ -66,6 +67,26 @@ pub trait Storage: Send + Sync {
     /// The `media_imported` field of the result is left at 0 — the caller
     /// (which owns the media directory) fills it in.
     fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary>;
+
+    /// Ensure the singleton collection row exists; returns its creation time
+    /// (ms), which anchors the day-number used for scheduling.
+    fn ensure_collection(&self, now_ms: i64) -> CoreResult<i64>;
+
+    /// Ids of cards in `deck_id` that are studyable on `today` (new cards, due
+    /// reviews, and learning/relearning), in study order.
+    fn due_card_ids(&self, deck_id: i64, today: i32) -> CoreResult<Vec<i64>>;
+
+    /// Render inputs + scheduling state for one card.
+    fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>>;
+
+    /// Persist a card's post-answer state and append a review-log row.
+    fn apply_answer(
+        &self,
+        card_id: i64,
+        next: &CardState,
+        due: i64,
+        log: &Revlog,
+    ) -> CoreResult<()>;
 }
 
 /// On-disk media store (checksums, dedup, cleanup). Implemented by

@@ -9,5 +9,6 @@ pub mod import;
 pub mod migrations;
 pub mod schema;
 pub mod storage;
+pub mod study;
 
 pub use storage::SqliteStorage;

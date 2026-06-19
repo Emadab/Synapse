@@ -43,6 +43,23 @@ impl From<Deck> for DeckSummary {
     }
 }
 
+/// A card presented for study: rendered HTML for both sides plus the
+/// human-readable next-interval label for each of the four answer buttons.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct StudyCardDto {
+    #[ts(type = "number")]
+    pub card_id: i64,
+    #[ts(type = "number")]
+    pub deck_id: i64,
+    pub question: String,
+    pub answer: String,
+    pub again: String,
+    pub hard: String,
+    pub good: String,
+    pub easy: String,
+}
+
 /// The serialisable error union returned across the IPC boundary. The frontend
 /// receives `{ kind, message }` and can branch on `kind`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

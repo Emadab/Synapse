@@ -58,6 +58,8 @@ pub fn run() {
             commands::deck::undo,
             commands::deck::undo_status,
             commands::import::import_package,
+            commands::study::get_next_card,
+            commands::study::answer_card,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

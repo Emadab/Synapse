@@ -10,11 +10,12 @@ use std::sync::{Mutex, MutexGuard};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use synapse_core::error::{CoreError, CoreResult};
-use synapse_core::model::{CanonicalModel, Deck, ImportSummary};
+use synapse_core::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
 use synapse_core::ports::Storage;
+use synapse_core::scheduling::CardState;
 
 use crate::schema::grave_kind;
-use crate::{import, migrations};
+use crate::{import, migrations, study};
 
 const DECK_COLUMNS: &str = r#"id, name, parent_id, config_id, "mod", usn, collapsed, is_filtered"#;
 
@@ -205,6 +206,32 @@ impl Storage for SqliteStorage {
         let summary = import::import(&tx, model)?;
         tx.commit().map_err(storage_err)?;
         Ok(summary)
+    }
+
+    fn ensure_collection(&self, now_ms: i64) -> CoreResult<i64> {
+        study::ensure_collection(&self.lock(), now_ms)
+    }
+
+    fn due_card_ids(&self, deck_id: i64, today: i32) -> CoreResult<Vec<i64>> {
+        study::due_card_ids(&self.lock(), deck_id, today)
+    }
+
+    fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>> {
+        study::study_card(&self.lock(), card_id)
+    }
+
+    fn apply_answer(
+        &self,
+        card_id: i64,
+        next: &CardState,
+        due: i64,
+        log: &Revlog,
+    ) -> CoreResult<()> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(storage_err)?;
+        study::apply_answer(&tx, card_id, next, due, log)?;
+        tx.commit().map_err(storage_err)?;
+        Ok(())
     }
 }
 

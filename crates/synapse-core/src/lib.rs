@@ -22,8 +22,8 @@ pub use collection::Collection;
 pub use error::{CoreError, CoreResult};
 pub use events::{DomainEvent, EventBus, EventSink};
 pub use model::{
-    Algorithm, CanonicalModel, Card, Deck, DeckConfig, Field, ImportSummary, Note, Notetype,
-    Rating, Revlog, Template,
+    Algorithm, CanonicalModel, Card, CardRender, Deck, DeckConfig, Field, ImportSummary, Note,
+    Notetype, Rating, Revlog, StudyCard, Template,
 };
 pub use ports::{Clock, Storage, SystemClock};
 pub use scheduling::{

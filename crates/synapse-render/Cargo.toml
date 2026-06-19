@@ -9,4 +9,4 @@ repository.workspace = true
 
 [dependencies]
 synapse-core.workspace = true
-# regex / html escaping are added when rendering lands (M4).
+regex = "1"

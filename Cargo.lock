@@ -801,6 +801,7 @@ dependencies = [
  "synapse-ankifmt",
  "synapse-core",
  "synapse-db",
+ "synapse-render",
  "synapse-scheduler",
  "tauri",
  "tauri-build",
@@ -3506,6 +3507,7 @@ dependencies = [
 name = "synapse-render"
 version = "0.1.0"
 dependencies = [
+ "regex",
  "synapse-core",
 ]
 
