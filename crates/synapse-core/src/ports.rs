@@ -6,7 +6,7 @@
 //! (notably [`FixedClock`]) so behaviour is deterministic.
 
 use crate::error::CoreResult;
-use crate::ipc::{NoteDetail, NoteOverview};
+use crate::ipc::{NoteDetail, NoteOverview, StatsDto};
 use crate::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
 use crate::scheduling::CardState;
 
@@ -104,6 +104,9 @@ pub trait Storage: Send + Sync {
         tags: &[String],
         now_ms: i64,
     ) -> CoreResult<()>;
+
+    /// Aggregate statistics (review history, forecast, card maturity).
+    fn stats(&self, today: i32, now_ms: i64) -> CoreResult<StatsDto>;
 }
 
 /// On-disk media store (checksums, dedup, cleanup). Implemented by

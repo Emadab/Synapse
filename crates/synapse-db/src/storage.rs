@@ -10,13 +10,13 @@ use std::sync::{Mutex, MutexGuard};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use synapse_core::error::{CoreError, CoreResult};
-use synapse_core::ipc::{NoteDetail, NoteOverview};
+use synapse_core::ipc::{NoteDetail, NoteOverview, StatsDto};
 use synapse_core::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
 use synapse_core::ports::Storage;
 use synapse_core::scheduling::CardState;
 
 use crate::schema::grave_kind;
-use crate::{browse, import, migrations, study};
+use crate::{browse, import, migrations, stats, study};
 
 const DECK_COLUMNS: &str = r#"id, name, parent_id, config_id, "mod", usn, collapsed, is_filtered"#;
 
@@ -251,6 +251,10 @@ impl Storage for SqliteStorage {
         now_ms: i64,
     ) -> CoreResult<()> {
         browse::update_note(&self.lock(), note_id, fields, tags, now_ms)
+    }
+
+    fn stats(&self, today: i32, now_ms: i64) -> CoreResult<StatsDto> {
+        stats::stats(&self.lock(), today, now_ms)
     }
 }
 

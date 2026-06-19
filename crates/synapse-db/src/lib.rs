@@ -9,6 +9,7 @@ pub mod browse;
 pub mod import;
 pub mod migrations;
 pub mod schema;
+pub mod stats;
 pub mod storage;
 pub mod study;
 

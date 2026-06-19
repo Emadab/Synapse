@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{CoreError, CoreResult};
 use crate::events::{DomainEvent, EventBus, EventSink};
-use crate::ipc::{NoteDetail, NoteOverview};
+use crate::ipc::{NoteDetail, NoteOverview, StatsDto};
 use crate::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
 use crate::ports::{Clock, Storage};
 use crate::scheduling::CardState;
@@ -82,6 +82,11 @@ impl Collection {
             .update_note(note_id, fields, tags, self.clock.now_ms())?;
         self.events.emit(DomainEvent::NoteUpdated { note_id });
         Ok(())
+    }
+
+    /// Aggregate statistics for the dashboards.
+    pub fn stats(&self) -> CoreResult<StatsDto> {
+        self.storage.stats(self.today(), self.clock.now_ms())
     }
 
     /// Persist an answered card's new state + review log, then notify.
@@ -320,6 +325,9 @@ mod tests {
             _now_ms: i64,
         ) -> CoreResult<()> {
             Ok(())
+        }
+        fn stats(&self, _today: i32, _now_ms: i64) -> CoreResult<crate::ipc::StatsDto> {
+            Ok(crate::ipc::StatsDto::default())
         }
     }
 

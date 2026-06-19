@@ -90,6 +90,37 @@ pub struct NoteDetail {
     pub tags: Vec<String>,
 }
 
+/// A count for one day. For review history `day` is an epoch-day number
+/// (ms / 86_400_000); for the forecast it is a day offset from today.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DayCount {
+    #[ts(type = "number")]
+    pub day: i64,
+    pub count: u32,
+}
+
+/// Aggregate collection statistics for the dashboards.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct StatsDto {
+    pub total_reviews: u32,
+    pub studied_days: u32,
+    /// Pass rate over the last 30 days, as a percentage (0–100).
+    pub retention_pct: f64,
+    #[ts(type = "number")]
+    pub total_time_ms: i64,
+    pub new_count: u32,
+    pub learning_count: u32,
+    pub young_count: u32,
+    pub mature_count: u32,
+    pub suspended_count: u32,
+    /// Reviews per epoch-day (all time), ascending.
+    pub reviews: Vec<DayCount>,
+    /// Due review cards per day-offset (0..=30 from today).
+    pub forecast: Vec<DayCount>,
+}
+
 /// The serialisable error union returned across the IPC boundary. The frontend
 /// receives `{ kind, message }` and can branch on `kind`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

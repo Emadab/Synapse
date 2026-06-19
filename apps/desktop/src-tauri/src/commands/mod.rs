@@ -6,4 +6,5 @@ pub mod app;
 pub mod browse;
 pub mod deck;
 pub mod import;
+pub mod stats;
 pub mod study;

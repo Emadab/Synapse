@@ -7,6 +7,7 @@ import type {
   IpcError,
   NoteDetail,
   NoteOverview,
+  StatsDto,
   StudyCardDto,
 } from "@synapse/ipc-types";
 
@@ -45,6 +46,9 @@ export const ipc = {
   // Undo
   undo: () => invoke<string | null>("undo"),
   undoStatus: () => invoke<string | null>("undo_status"),
+
+  // Statistics
+  getStats: () => invoke<StatsDto>("get_stats"),
 };
 
 /**

@@ -13,3 +13,5 @@ export type { StudyCardDto } from "./generated/StudyCardDto";
 export type { NoteField } from "./generated/NoteField";
 export type { NoteOverview } from "./generated/NoteOverview";
 export type { NoteDetail } from "./generated/NoteDetail";
+export type { DayCount } from "./generated/DayCount";
+export type { StatsDto } from "./generated/StatsDto";
