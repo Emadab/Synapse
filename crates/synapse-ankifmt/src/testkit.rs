@@ -138,3 +138,142 @@ fn build_collection(db_path: &Path) -> CoreResult<()> {
     drop(conn);
     Ok(())
 }
+
+// --- v18 (modern, tabular + protobuf, zstd) -------------------------------
+
+fn pb_varint(mut value: u64, out: &mut Vec<u8>) {
+    loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value != 0 {
+            byte |= 0x80;
+        }
+        out.push(byte);
+        if value == 0 {
+            break;
+        }
+    }
+}
+
+fn pb_len_field(field: u32, bytes: &[u8], out: &mut Vec<u8>) {
+    pb_varint(u64::from(field) << 3 | 2, out);
+    pb_varint(bytes.len() as u64, out);
+    out.extend_from_slice(bytes);
+}
+
+/// Encode a `CardTemplateConfig` (q_format=1, a_format=2).
+fn pb_template(qfmt: &str, afmt: &str) -> Vec<u8> {
+    let mut out = Vec::new();
+    pb_len_field(1, qfmt.as_bytes(), &mut out);
+    pb_len_field(2, afmt.as_bytes(), &mut out);
+    out
+}
+
+/// Encode `MediaEntries { repeated MediaEntry entries = 1 }` (name=1).
+fn pb_media_entries(names: &[&str]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for name in names {
+        let mut entry = Vec::new();
+        pb_len_field(1, name.as_bytes(), &mut entry);
+        pb_len_field(1, &entry, &mut out);
+    }
+    out
+}
+
+/// Write a modern (v18) `.apkg`: tabular decks/notetypes/fields/templates with
+/// protobuf template configs, a zstd-compressed `collection.anki21b`, and a
+/// protobuf media map.
+pub fn write_sample_v18_apkg(path: &Path) -> CoreResult<()> {
+    let dir = tempfile::tempdir().map_err(err)?;
+    let db_path = dir.path().join("collection.anki21");
+    build_v18_collection(&db_path)?;
+    let sqlite_bytes = std::fs::read(&db_path).map_err(err)?;
+    let compressed = zstd::stream::encode_all(&sqlite_bytes[..], 0).map_err(err)?;
+
+    let file = File::create(path).map_err(err)?;
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default();
+
+    zip.start_file("collection.anki21b", options).map_err(err)?;
+    zip.write_all(&compressed).map_err(err)?;
+    zip.start_file("media", options).map_err(err)?;
+    zip.write_all(&pb_media_entries(&["hola.png"]))
+        .map_err(err)?;
+    zip.start_file("0", options).map_err(err)?;
+    zip.write_all(PNG_1X1).map_err(err)?;
+    zip.finish().map_err(err)?;
+    Ok(())
+}
+
+fn build_v18_collection(db_path: &Path) -> CoreResult<()> {
+    let conn = Connection::open(db_path).map_err(err)?;
+    conn.execute_batch(
+        r#"
+        CREATE TABLE col (id INTEGER PRIMARY KEY, crt INTEGER, mod INTEGER, scm INTEGER,
+            ver INTEGER, dty INTEGER, usn INTEGER, ls INTEGER, conf TEXT, models TEXT,
+            decks TEXT, dconf TEXT, tags TEXT);
+        CREATE TABLE decks (id INTEGER PRIMARY KEY, name TEXT NOT NULL, mtime_secs INTEGER,
+            usn INTEGER, common BLOB, kind BLOB);
+        CREATE TABLE notetypes (id INTEGER PRIMARY KEY, name TEXT NOT NULL, mtime_secs INTEGER,
+            usn INTEGER, config BLOB);
+        CREATE TABLE fields (ntid INTEGER, ord INTEGER, name TEXT, config BLOB,
+            PRIMARY KEY (ntid, ord));
+        CREATE TABLE templates (ntid INTEGER, ord INTEGER, name TEXT, mtime_secs INTEGER,
+            usn INTEGER, config BLOB, PRIMARY KEY (ntid, ord));
+        CREATE TABLE notes (id INTEGER PRIMARY KEY, guid TEXT, mid INTEGER, mod INTEGER,
+            usn INTEGER, tags TEXT, flds TEXT, sfld TEXT, csum INTEGER, flags INTEGER, data TEXT);
+        CREATE TABLE cards (id INTEGER PRIMARY KEY, nid INTEGER, did INTEGER, ord INTEGER,
+            mod INTEGER, usn INTEGER, type INTEGER, queue INTEGER, due INTEGER, ivl INTEGER,
+            factor INTEGER, reps INTEGER, lapses INTEGER, left INTEGER, odue INTEGER,
+            odid INTEGER, flags INTEGER, data TEXT);
+        CREATE TABLE revlog (id INTEGER PRIMARY KEY, cid INTEGER, usn INTEGER, ease INTEGER,
+            ivl INTEGER, lastIvl INTEGER, factor INTEGER, time INTEGER, type INTEGER);
+        INSERT INTO col (id, crt, mod, scm, ver, dty, usn, ls, conf, models, decks, dconf, tags)
+            VALUES (1, 1600000000, 1600000000, 1600000000, 18, 0, 0, 0, '{}', '{}', '{}', '{}', '{}');
+        INSERT INTO decks (id, name, mtime_secs, usn) VALUES
+            (1, 'Default', 0, 0), (2, 'Spanish', 0, 0), (3, 'Spanish::Verbs', 0, 0);
+        INSERT INTO notetypes (id, name, mtime_secs, usn) VALUES (1700000000000, 'Basic', 0, 0);
+        INSERT INTO fields (ntid, ord, name) VALUES
+            (1700000000000, 0, 'Front'), (1700000000000, 1, 'Back');
+        "#,
+    )
+    .map_err(err)?;
+
+    let template = pb_template("{{Front}}", "{{FrontSide}}<hr id=answer>{{Back}}");
+    conn.execute(
+        "INSERT INTO templates (ntid, ord, name, mtime_secs, usn, config)
+         VALUES (1700000000000, 0, 'Card 1', 0, 0, ?1)",
+        rusqlite::params![template],
+    )
+    .map_err(err)?;
+
+    let notes = [
+        (1001i64, "guid0001", "hola\u{1f}hello", "hola"),
+        (
+            1002i64,
+            "guid0002",
+            "<img src=\"hola.png\">uno\u{1f}one",
+            "uno",
+        ),
+    ];
+    for (id, guid, flds, sfld) in notes {
+        conn.execute(
+            "INSERT INTO notes (id, guid, mid, mod, usn, tags, flds, sfld, csum, flags, data)
+             VALUES (?1, ?2, 1700000000000, 1600000000, -1, 'spanish', ?3, ?4, 0, 0, '')",
+            rusqlite::params![id, guid, flds, sfld],
+        )
+        .map_err(err)?;
+    }
+    for (id, nid, due) in [(2001i64, 1001i64, 1u8), (2002i64, 1002i64, 2u8)] {
+        conn.execute(
+            "INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor,
+             reps, lapses, left, odue, odid, flags, data)
+             VALUES (?1, ?2, 3, 0, 1600000000, -1, 0, 0, ?3, 0, 0, 0, 0, 0, 0, 0, 0, '')",
+            rusqlite::params![id, nid, due],
+        )
+        .map_err(err)?;
+    }
+
+    drop(conn);
+    Ok(())
+}

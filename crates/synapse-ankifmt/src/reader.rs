@@ -3,9 +3,10 @@
 //! Pipeline: unzip → locate the collection DB (`collection.anki2` /
 //! `.anki21` / zstd-compressed `.anki21b`) → detect schema → map to canonical.
 //!
-//! Legacy **schema v11** (decks/models/dconf stored as JSON blobs in the `col`
-//! table) is fully supported. Modern **v18** (tabular, protobuf-encoded configs)
-//! is detected and rejected with a clear error until its protobuf decoder lands.
+//! Both layouts are supported: legacy **v11** (decks/models/dconf as JSON blobs
+//! in the `col` table) and modern **v18** (dedicated tables; only each card
+//! template's q/a format needs protobuf decoding — see [`crate::pb`]). Notes,
+//! cards and revlog share identical columns across both.
 
 use std::io::Read;
 use std::path::Path;
@@ -82,21 +83,112 @@ fn table_exists(conn: &Connection, name: &str) -> CoreResult<bool> {
 }
 
 fn read_collection(conn: &Connection) -> CoreResult<CanonicalModel> {
-    if table_exists(conn, "notetypes")? {
-        return Err(CoreError::Format(
-            "this looks like a modern Anki collection (schema v18). Import of the v18/.colpkg \
-             protobuf format isn't supported yet — re-export with \"Support older Anki versions\" \
-             to produce a v11 .apkg."
-                .into(),
-        ));
-    }
-
     let mut model = CanonicalModel::default();
-    read_v11_meta(conn, &mut model)?;
+    // Schema detection: the modern (v18) layout has dedicated tables; the legacy
+    // (v11) layout keeps decks/models/dconf as JSON blobs in `col`.
+    if table_exists(conn, "notetypes")? {
+        read_v18_meta(conn, &mut model)?;
+    } else {
+        read_v11_meta(conn, &mut model)?;
+    }
+    // notes/cards/revlog have identical columns in both schemas.
     read_notes(conn, &mut model)?;
     read_cards(conn, &mut model)?;
     read_revlog(conn, &mut model)?;
     Ok(model)
+}
+
+/// Read the modern (v18) tabular layout. Deck/notetype/field/template *ids and
+/// names* are plain columns; only per-row `config` is protobuf — and the only
+/// piece we must decode is each template's q/a format.
+fn read_v18_meta(conn: &Connection, model: &mut CanonicalModel) -> CoreResult<()> {
+    {
+        let mut stmt = conn.prepare("SELECT id, name FROM decks").map_err(fmt)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .map_err(fmt)?;
+        for row in rows {
+            let (id, name) = row.map_err(fmt)?;
+            model.decks.push(Deck {
+                id,
+                name: name.replace('\u{1f}', "::"),
+                parent_id: None,
+                config_id: 1,
+                mod_ms: 0,
+                usn: -1,
+                collapsed: false,
+                is_filtered: false,
+            });
+        }
+    }
+    {
+        let mut stmt = conn
+            .prepare("SELECT id, name FROM notetypes")
+            .map_err(fmt)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .map_err(fmt)?;
+        for row in rows {
+            let (id, name) = row.map_err(fmt)?;
+            model.notetypes.push(Notetype {
+                id,
+                name,
+                kind: 0, // refined to cloze below by inspecting templates
+                mod_ms: 0,
+                usn: -1,
+                config_json: "{}".into(),
+            });
+        }
+    }
+    {
+        let mut stmt = conn
+            .prepare("SELECT ntid, ord, name FROM fields")
+            .map_err(fmt)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Field {
+                    notetype_id: r.get(0)?,
+                    ord: r.get(1)?,
+                    name: r.get(2)?,
+                    config_json: "{}".into(),
+                })
+            })
+            .map_err(fmt)?;
+        model.fields = rows.collect::<rusqlite::Result<_>>().map_err(fmt)?;
+    }
+    {
+        let mut stmt = conn
+            .prepare("SELECT ntid, ord, name, config FROM templates")
+            .map_err(fmt)?;
+        let rows = stmt
+            .query_map([], |r| {
+                let config: Vec<u8> = r.get(3)?;
+                let (qfmt, afmt) = crate::pb::template_formats(&config);
+                Ok(Template {
+                    notetype_id: r.get(0)?,
+                    ord: r.get(1)?,
+                    name: r.get(2)?,
+                    qfmt,
+                    afmt,
+                    config_json: "{}".into(),
+                })
+            })
+            .map_err(fmt)?;
+        model.templates = rows.collect::<rusqlite::Result<_>>().map_err(fmt)?;
+    }
+
+    // Infer cloze note types from their templates (v18 keeps `kind` in the
+    // notetype's protobuf config, but the {{cloze:}} marker is unambiguous).
+    for notetype in &mut model.notetypes {
+        let is_cloze = model
+            .templates
+            .iter()
+            .any(|t| t.notetype_id == notetype.id && t.qfmt.contains("{{cloze:"));
+        if is_cloze {
+            notetype.kind = 1;
+        }
+    }
+    Ok(())
 }
 
 /// Parse the `col` table's JSON blobs (models, decks, dconf) — the v11 layout.
@@ -273,45 +365,60 @@ fn read_revlog(conn: &Connection, model: &mut CanonicalModel) -> CoreResult<()> 
     Ok(())
 }
 
-/// Extract media into `dir` using the v2 JSON `media` map ({"0":"name.png"}).
-/// v3 (protobuf) media maps are not yet handled and yield 0.
+/// Extract media into `dir`. The `media` map is JSON `{"0":"name.png"}` in v2
+/// packages and a protobuf `MediaEntries` in v3; media blobs may be zstd
+/// compressed (v3). Each mapping is `(zip entry name, destination filename)`.
 fn extract_media(archive: &mut Archive, dir: &Path) -> CoreResult<u32> {
-    let map_json = match read_entry_to_string(archive, "media") {
-        Some(s) => s,
-        None => return Ok(0),
-    };
-    let map: Value = serde_json::from_str(&map_json).map_err(fmt)?;
-    let Some(entries) = map.as_object() else {
+    let Some(raw) = read_entry_to_bytes(archive, "media") else {
         return Ok(0);
     };
 
+    let mapping: Vec<(String, String)> = match serde_json::from_slice::<Value>(&raw) {
+        Ok(Value::Object(map)) => map
+            .into_iter()
+            .filter_map(|(index, name)| name.as_str().map(|n| (index, n.to_string())))
+            .collect(),
+        _ => crate::pb::media_entry_names(&raw)
+            .into_iter()
+            .enumerate()
+            .map(|(i, name)| (i.to_string(), name))
+            .collect(),
+    };
+    if mapping.is_empty() {
+        return Ok(0);
+    }
+
     std::fs::create_dir_all(dir).map_err(fmt)?;
     let mut count = 0;
-    for (index, filename) in entries {
-        let Some(filename) = filename.as_str() else {
-            continue;
-        };
+    for (entry_name, filename) in mapping {
         // Use only the file-name component to prevent path traversal.
-        let Some(safe) = Path::new(filename).file_name() else {
+        let Some(safe) = Path::new(&filename).file_name() else {
             continue;
         };
-
-        let mut bytes = Vec::new();
-        match archive.by_name(index) {
-            Ok(mut entry) => entry.read_to_end(&mut bytes).map_err(fmt)?,
-            Err(_) => continue,
+        let Some(bytes) = read_entry_to_bytes(archive, &entry_name) else {
+            continue;
         };
-        std::fs::write(dir.join(safe), &bytes).map_err(fmt)?;
+        std::fs::write(dir.join(safe), maybe_unzstd(bytes)).map_err(fmt)?;
         count += 1;
     }
     Ok(count)
 }
 
-fn read_entry_to_string(archive: &mut Archive, name: &str) -> Option<String> {
+fn read_entry_to_bytes(archive: &mut Archive, name: &str) -> Option<Vec<u8>> {
     let mut entry = archive.by_name(name).ok()?;
-    let mut s = String::new();
-    entry.read_to_string(&mut s).ok()?;
-    Some(s)
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+/// Decompress if the bytes start with the zstd magic, else return them as-is.
+fn maybe_unzstd(bytes: Vec<u8>) -> Vec<u8> {
+    const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+    if bytes.len() >= 4 && bytes[..4] == ZSTD_MAGIC {
+        zstd::stream::decode_all(std::io::Cursor::new(&bytes)).unwrap_or(bytes)
+    } else {
+        bytes
+    }
 }
 
 fn json_i64(value: &Value, key: &str) -> Option<i64> {

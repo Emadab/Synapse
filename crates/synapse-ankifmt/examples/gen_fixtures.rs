@@ -9,7 +9,11 @@ fn main() {
     let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures");
     std::fs::create_dir_all(&out).expect("create fixtures dir");
 
-    let path = out.join("sample-v11.apkg");
-    testkit::write_sample_v11_apkg(&path).expect("write sample v11 apkg");
-    println!("wrote {}", path.display());
+    let v11 = out.join("sample-v11.apkg");
+    testkit::write_sample_v11_apkg(&v11).expect("write sample v11 apkg");
+    println!("wrote {}", v11.display());
+
+    let v18 = out.join("sample-v18.apkg");
+    testkit::write_sample_v18_apkg(&v18).expect("write sample v18 apkg");
+    println!("wrote {}", v18.display());
 }

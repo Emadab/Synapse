@@ -4,9 +4,10 @@
 //! (`.apkg`/`.colpkg`) and schema version and emits a [`CanonicalModel`];
 //! writers (M6) serialise it back. Round-trip fidelity is a test gate.
 //!
-//! Status: legacy schema **v11** import is implemented; modern **v18**
-//! (protobuf-in-SQLite) is detected and rejected with a clear error.
+//! Status: import of both legacy schema **v11** (JSON-blob `col`) and modern
+//! **v18** (tabular + protobuf template configs, zstd `.anki21b`) is supported.
 
+mod pb;
 pub mod reader;
 pub mod testkit;
 
