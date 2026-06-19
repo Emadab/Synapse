@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Plus, Trash2, Undo2 } from "lucide-react";
-import type { DeckSummary } from "@synapse/ipc-types";
+import { Download, Layers, Plus, Trash2, Undo2 } from "lucide-react";
+import type { DeckSummary, ImportSummary } from "@synapse/ipc-types";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
-import { errorMessage, ipc, isTauri } from "@/lib/ipc";
+import { errorMessage, ipc, isTauri, pickAndImportPackage } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
 
 function deckDepth(name: string): number {
@@ -37,6 +37,17 @@ export function DeckBrowserScreen() {
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [lastImport, setLastImport] = useState<ImportSummary | null>(null);
+
+  const importMut = useMutation({
+    mutationFn: pickAndImportPackage,
+    onSuccess: (summary) => {
+      if (summary) {
+        setLastImport(summary);
+        void invalidateDecks();
+      }
+    },
+  });
 
   const createMut = useMutation({
     mutationFn: (deckName: string) => ipc.createDeck(deckName),
@@ -66,6 +77,14 @@ export function DeckBrowserScreen() {
         description="Your collection. Import an Anki deck, or create one to get started."
         actions={
           <>
+            <Button
+              variant="outline"
+              onClick={() => importMut.mutate()}
+              disabled={!tauri || importMut.isPending}
+              title="Import an Anki .apkg / .colpkg"
+            >
+              <Download /> {importMut.isPending ? "Importing…" : "Import"}
+            </Button>
             <Button
               variant="outline"
               onClick={() => undoMut.mutate()}
@@ -116,6 +135,20 @@ export function DeckBrowserScreen() {
 
         {createMut.isError ? (
           <p className="px-8 py-2 text-sm text-destructive">{errorMessage(createMut.error)}</p>
+        ) : null}
+
+        {importMut.isError ? (
+          <p className="px-8 py-2 text-sm text-destructive">
+            Import failed: {errorMessage(importMut.error)}
+          </p>
+        ) : null}
+
+        {lastImport ? (
+          <p className="border-b border-border bg-secondary/40 px-8 py-2 text-sm text-muted-foreground">
+            Imported {lastImport.notes_added} notes, {lastImport.cards_added} cards,{" "}
+            {lastImport.decks_added} decks, {lastImport.media_imported} media
+            {lastImport.notes_updated > 0 ? ` · ${lastImport.notes_updated} updated` : ""}.
+          </p>
         ) : null}
 
         {!tauri ? (

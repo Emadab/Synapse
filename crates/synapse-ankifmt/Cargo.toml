@@ -9,4 +9,13 @@ repository.workspace = true
 
 [dependencies]
 synapse-core.workspace = true
-# zip / zstd / rusqlite / prost are added in M2 (import) and M6 (export).
+serde_json.workspace = true
+zip = "2"
+zstd = "0.13"
+tempfile = "3"
+# Reads the SQLite collection embedded in the package.
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+# Integration tests exercise the full reader -> storage import pipeline.
+synapse-db.workspace = true

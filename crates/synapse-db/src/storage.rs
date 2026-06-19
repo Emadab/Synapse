@@ -10,11 +10,11 @@ use std::sync::{Mutex, MutexGuard};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use synapse_core::error::{CoreError, CoreResult};
-use synapse_core::model::Deck;
+use synapse_core::model::{CanonicalModel, Deck, ImportSummary};
 use synapse_core::ports::Storage;
 
-use crate::migrations;
 use crate::schema::grave_kind;
+use crate::{import, migrations};
 
 const DECK_COLUMNS: &str = r#"id, name, parent_id, config_id, "mod", usn, collapsed, is_filtered"#;
 
@@ -197,6 +197,14 @@ impl Storage for SqliteStorage {
         .map_err(storage_err)?;
         tx.commit().map_err(storage_err)?;
         Ok(())
+    }
+
+    fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(storage_err)?;
+        let summary = import::import(&tx, model)?;
+        tx.commit().map_err(storage_err)?;
+        Ok(summary)
     }
 }
 

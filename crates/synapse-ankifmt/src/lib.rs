@@ -1,9 +1,13 @@
 //! # synapse-ankifmt
 //!
-//! Bidirectional Anki compatibility. Readers detect the container
-//! (`.apkg`/`.colpkg`) and schema version (legacy v11 JSON-blob vs modern v18
-//! tabular) and emit a single `CanonicalModel`; writers serialise it back to
-//! `.apkg` v2 (zlib) / v3 (zstd) and `.colpkg`. Round-trip fidelity is a test
-//! gate: import → export → re-import must be a no-op diff.
+//! Bidirectional Anki compatibility. [`read_package`] detects the container
+//! (`.apkg`/`.colpkg`) and schema version and emits a [`CanonicalModel`];
+//! writers (M6) serialise it back. Round-trip fidelity is a test gate.
 //!
-//! Readers + merge land in M2; writers in M6.
+//! Status: legacy schema **v11** import is implemented; modern **v18**
+//! (protobuf-in-SQLite) is detected and rejected with a clear error.
+
+pub mod reader;
+pub mod testkit;
+
+pub use reader::read_package;

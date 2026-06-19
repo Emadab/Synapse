@@ -2,8 +2,10 @@
 //! entities (see [`entities`]). Remaining entities (Note, Card, Notetype,
 //! Template, Revlog) arrive with import in M2.
 
+pub mod canonical;
 pub mod entities;
-pub use entities::{Deck, DeckConfig};
+pub use canonical::{CanonicalModel, ImportSummary};
+pub use entities::{Card, Deck, DeckConfig, Field, Note, Notetype, Revlog, Template};
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

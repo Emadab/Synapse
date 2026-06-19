@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{CoreError, CoreResult};
 use crate::events::{DomainEvent, EventBus, EventSink};
-use crate::model::Deck;
+use crate::model::{CanonicalModel, Deck, ImportSummary};
 use crate::ports::{Clock, Storage};
 use crate::undo::UndoLog;
 
@@ -96,6 +96,15 @@ impl Collection {
         self.record_undo(description, move |s, _now| s.insert_deck(&deck));
         self.events.emit(DomainEvent::DeckChanged { deck_id: id });
         Ok(())
+    }
+
+    /// Merge a parsed package (from `synapse-ankifmt`) into this collection.
+    /// Import is not undoable via the per-op log (it is bulk and transactional);
+    /// the pre-import backup is the recovery path (added in a later milestone).
+    pub fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary> {
+        let summary = self.storage.import(model)?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(summary)
     }
 
     /// Description of the next undoable operation, if any.
@@ -206,6 +215,17 @@ mod tests {
             self.decks.lock().unwrap().push(deck.clone());
             Ok(())
         }
+        fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary> {
+            let mut summary = ImportSummary::default();
+            for deck in &model.decks {
+                if self.deck_by_name(&deck.name)?.is_none() {
+                    self.create_deck(&deck.name, deck.mod_ms)?;
+                    summary.decks_added += 1;
+                }
+            }
+            summary.notes_added = model.notes.len() as u32;
+            Ok(summary)
+        }
     }
 
     fn collection() -> Collection {
@@ -253,6 +273,39 @@ mod tests {
 
         // nothing left
         assert!(c.undo().unwrap().is_none());
+    }
+
+    #[test]
+    fn import_creates_decks_and_counts_notes() {
+        let c = collection();
+        let model = CanonicalModel {
+            decks: vec![Deck {
+                id: 5,
+                name: "Imported".into(),
+                parent_id: None,
+                config_id: 1,
+                mod_ms: 0,
+                usn: -1,
+                collapsed: false,
+                is_filtered: false,
+            }],
+            notes: vec![crate::model::Note {
+                id: 1700000000000,
+                guid: "abc".into(),
+                notetype_id: 1,
+                mod_ms: 0,
+                usn: -1,
+                tags: vec![],
+                fields: vec!["Front".into(), "Back".into()],
+                sort_field: Some("Front".into()),
+                checksum: None,
+            }],
+            ..Default::default()
+        };
+        let summary = c.import(&model).unwrap();
+        assert_eq!(summary.decks_added, 1);
+        assert_eq!(summary.notes_added, 1);
+        assert!(c.list_decks().unwrap().iter().any(|d| d.name == "Imported"));
     }
 
     #[test]

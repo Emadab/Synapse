@@ -6,7 +6,7 @@
 //! (notably [`FixedClock`]) so behaviour is deterministic.
 
 use crate::error::CoreResult;
-use crate::model::Deck;
+use crate::model::{CanonicalModel, Deck, ImportSummary};
 
 /// Source of "now", injectable so scheduler tests are deterministic across the
 /// day cutoff and time zones. The engine must never read the wall clock except
@@ -60,6 +60,12 @@ pub trait Storage: Send + Sync {
     fn remove_deck(&self, id: i64) -> CoreResult<()>;
     /// Re-insert a deck verbatim (used to undo a deletion).
     fn insert_deck(&self, deck: &Deck) -> CoreResult<()>;
+
+    /// Merge a parsed collection into this one in a single transaction.
+    /// Decks/notetypes match by name, notes by `guid`; see `CanonicalModel`.
+    /// The `media_imported` field of the result is left at 0 — the caller
+    /// (which owns the media directory) fills it in.
+    fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary>;
 }
 
 /// On-disk media store (checksums, dedup, cleanup). Implemented by

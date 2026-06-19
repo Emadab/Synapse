@@ -32,6 +32,7 @@ fn event_name(event: &DomainEvent) -> &'static str {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Open (or create) the collection under the OS app-data directory.
             let dir = app.path().app_data_dir()?;
@@ -56,6 +57,7 @@ pub fn run() {
             commands::deck::delete_deck,
             commands::deck::undo,
             commands::deck::undo_status,
+            commands::import::import_package,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

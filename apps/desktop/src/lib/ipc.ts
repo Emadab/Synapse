@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppInfo, DeckSummary, IpcError } from "@synapse/ipc-types";
+import { open } from "@tauri-apps/plugin-dialog";
+import type { AppInfo, DeckSummary, ImportSummary, IpcError } from "@synapse/ipc-types";
 
 /**
  * Typed wrapper over Tauri's `invoke`. The UI imports from here and never calls
@@ -15,10 +16,27 @@ export const ipc = {
   renameDeck: (id: number, name: string) => invoke<void>("rename_deck", { id, name }),
   deleteDeck: (id: number) => invoke<void>("delete_deck", { id }),
 
+  // Import
+  importPackage: (path: string) => invoke<ImportSummary>("import_package", { path }),
+
   // Undo
   undo: () => invoke<string | null>("undo"),
   undoStatus: () => invoke<string | null>("undo_status"),
 };
+
+/**
+ * Prompt for an .apkg/.colpkg and import it. Returns the summary, or `null` if
+ * the user cancelled the file picker.
+ */
+export async function pickAndImportPackage(): Promise<ImportSummary | null> {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "Anki package", extensions: ["apkg", "colpkg"] }],
+  });
+  if (typeof selected !== "string") return null;
+  return ipc.importPackage(selected);
+}
 
 /** True when running inside the Tauri webview (vs a plain browser via `dev:web`). */
 export function isTauri(): boolean {
