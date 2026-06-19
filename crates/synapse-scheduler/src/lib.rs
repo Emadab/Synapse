@@ -1,35 +1,29 @@
 //! # synapse-scheduler
 //!
-//! Pure scheduling logic. Functions are deterministic over plain data plus an
-//! injected [`synapse_core::Clock`]; there is no IO, no database and no direct
-//! wall-clock access. Both algorithms live behind the
-//! [`synapse_core::ports::Scheduler`] port so the application layer never names
-//! a concrete algorithm.
+//! Pure scheduling logic. Functions are deterministic over plain data plus the
+//! [`SchedContext`] (today + per-deck config); there is no IO, no database and
+//! no direct wall-clock access. Both algorithms implement the
+//! [`synapse_core::scheduling::Scheduler`] port, so the application layer never
+//! names a concrete algorithm — it asks [`scheduler_for`].
 //!
-//! M3 fills in the real SM-2 and FSRS state machines, validated against golden
-//! vectors generated from Anki. M0 ships the wiring: a [`Sm2Scheduler`] that
-//! satisfies the port so the dependency direction (scheduler → core) is real.
+//! Interval fuzz is applied by the caller at apply time (seeded by card id) so
+//! that previews and these tests stay deterministic.
 
-use synapse_core::model::Algorithm;
-use synapse_core::ports::Scheduler;
+mod fsrs;
+mod sm2;
 
-/// Anki-compatible SM-2 scheduler. State machine arrives in M3.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Sm2Scheduler;
+pub use fsrs::FsrsScheduler;
+pub use sm2::Sm2Scheduler;
 
-impl Scheduler for Sm2Scheduler {
-    fn algorithm(&self) -> Algorithm {
-        Algorithm::Sm2
-    }
-}
+use synapse_core::scheduling::Scheduler;
+use synapse_core::Algorithm;
 
-/// FSRS-5 scheduler. State machine and optimiser arrive in M3.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct FsrsScheduler;
-
-impl Scheduler for FsrsScheduler {
-    fn algorithm(&self) -> Algorithm {
-        Algorithm::Fsrs
+/// Construct the scheduler for a deck's configured algorithm. Switching is just
+/// a config change — both SM-2 and FSRS state persist on every card.
+pub fn scheduler_for(algorithm: Algorithm) -> Box<dyn Scheduler> {
+    match algorithm {
+        Algorithm::Sm2 => Box::new(Sm2Scheduler),
+        Algorithm::Fsrs => Box::new(FsrsScheduler),
     }
 }
 
@@ -38,8 +32,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn schedulers_report_their_algorithm() {
-        assert_eq!(Sm2Scheduler.algorithm(), Algorithm::Sm2);
-        assert_eq!(FsrsScheduler.algorithm(), Algorithm::Fsrs);
+    fn factory_returns_matching_algorithm() {
+        assert_eq!(scheduler_for(Algorithm::Sm2).algorithm(), Algorithm::Sm2);
+        assert_eq!(scheduler_for(Algorithm::Fsrs).algorithm(), Algorithm::Fsrs);
     }
 }

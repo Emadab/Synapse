@@ -15,6 +15,7 @@ pub mod events;
 pub mod ipc;
 pub mod model;
 pub mod ports;
+pub mod scheduling;
 pub mod undo;
 
 pub use collection::Collection;
@@ -25,3 +26,7 @@ pub use model::{
     Rating, Revlog, Template,
 };
 pub use ports::{Clock, Storage, SystemClock};
+pub use scheduling::{
+    AnswerOutcome, CardPhase, CardState, Interval, RatingPreviews, SchedConfig, SchedContext,
+    Scheduler,
+};

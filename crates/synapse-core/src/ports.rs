@@ -76,9 +76,4 @@ pub trait MediaStore: Send + Sync {}
 /// (`usn`/`mod`/`graves`) keeps the collection sync-ready in the meantime.
 pub trait SyncProvider: Send + Sync {}
 
-/// Spaced-repetition scheduler. Implemented by `synapse-scheduler`
-/// (SM-2 and FSRS). Defined here so the application layer depends only on the
-/// trait, never on a concrete algorithm.
-pub trait Scheduler: Send + Sync {
-    fn algorithm(&self) -> crate::model::Algorithm;
-}
+// The `Scheduler` port lives in `crate::scheduling` alongside its value types.
