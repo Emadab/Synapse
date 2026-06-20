@@ -11,7 +11,7 @@ use std::sync::{Mutex, MutexGuard};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use synapse_core::error::{CoreError, CoreResult};
 use synapse_core::ipc::{NoteDetail, NoteOverview, StatsDto};
-use synapse_core::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
+use synapse_core::model::{CanonicalModel, Deck, ImportSummary, NoteIndexRow, Revlog, StudyCard};
 use synapse_core::ports::Storage;
 use synapse_core::scheduling::CardState;
 
@@ -255,6 +255,14 @@ impl Storage for SqliteStorage {
 
     fn stats(&self, today: i32, now_ms: i64) -> CoreResult<StatsDto> {
         stats::stats(&self.lock(), today, now_ms)
+    }
+
+    fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>> {
+        browse::index_rows(&self.lock())
+    }
+
+    fn notes_by_ids(&self, ids: &[i64]) -> CoreResult<Vec<NoteOverview>> {
+        browse::notes_by_ids(&self.lock(), ids)
     }
 }
 

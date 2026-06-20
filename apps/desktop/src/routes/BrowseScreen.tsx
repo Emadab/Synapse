@@ -17,7 +17,7 @@ export function BrowseScreen() {
 
   const notes = useQuery({
     queryKey: ["notes", query],
-    queryFn: () => ipc.listNotes(query || undefined),
+    queryFn: () => (query ? ipc.searchNotes(query) : ipc.listNotes()),
     enabled: tauri,
   });
 

@@ -1,8 +1,10 @@
 //! Card/note browser commands: list, fetch, and save notes.
 
-use synapse_core::ipc::{IpcError, NoteDetail, NoteOverview};
+use synapse_core::ipc::{IpcError, IpcErrorKind, NoteDetail, NoteOverview};
 use synapse_core::Collection;
 use tauri::State;
+
+use crate::SearchState;
 
 type IpcResult<T> = Result<T, IpcError>;
 
@@ -28,4 +30,25 @@ pub fn save_note(
 ) -> IpcResult<()> {
     collection.update_note(note_id, &fields, &tags)?;
     Ok(())
+}
+
+/// Full-text + faceted Tantivy search. Falls back to SQL LIKE when query is
+/// empty or index is unavailable.
+#[tauri::command]
+pub fn search_notes(
+    collection: State<'_, Collection>,
+    search: State<'_, SearchState>,
+    query: String,
+) -> IpcResult<Vec<NoteOverview>> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(collection.list_notes(None)?);
+    }
+    let ids = search
+        .0
+        .lock()
+        .map_err(|_| IpcError { kind: IpcErrorKind::Internal, message: "search lock poisoned".into() })?
+        .search(q, 500)
+        .map_err(|e| IpcError { kind: IpcErrorKind::Internal, message: e.to_string() })?;
+    Ok(collection.notes_by_ids(&ids)?)
 }

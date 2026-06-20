@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use crate::error::{CoreError, CoreResult};
 use crate::events::{DomainEvent, EventBus, EventSink};
 use crate::ipc::{NoteDetail, NoteOverview, StatsDto};
-use crate::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
+use crate::model::{CanonicalModel, Deck, ImportSummary, NoteIndexRow, Revlog, StudyCard};
 use crate::ports::{Clock, Storage};
 use crate::scheduling::CardState;
 use crate::undo::UndoLog;
@@ -87,6 +87,16 @@ impl Collection {
     /// Aggregate statistics for the dashboards.
     pub fn stats(&self) -> CoreResult<StatsDto> {
         self.storage.stats(self.today(), self.clock.now_ms())
+    }
+
+    /// All notes flattened for (re)building the search index.
+    pub fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>> {
+        self.storage.index_rows()
+    }
+
+    /// Browser rows for a set of note ids (search hits).
+    pub fn notes_by_ids(&self, ids: &[i64]) -> CoreResult<Vec<NoteOverview>> {
+        self.storage.notes_by_ids(ids)
     }
 
     /// Persist an answered card's new state + review log, then notify.
@@ -328,6 +338,12 @@ mod tests {
         }
         fn stats(&self, _today: i32, _now_ms: i64) -> CoreResult<crate::ipc::StatsDto> {
             Ok(crate::ipc::StatsDto::default())
+        }
+        fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>> {
+            Ok(vec![])
+        }
+        fn notes_by_ids(&self, _ids: &[i64]) -> CoreResult<Vec<NoteOverview>> {
+            Ok(vec![])
         }
     }
 

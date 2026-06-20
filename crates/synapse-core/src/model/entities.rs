@@ -109,6 +109,17 @@ pub struct Card {
     pub data: Option<String>,
 }
 
+/// A flattened note for the full-text search index: plaintext field content
+/// plus the facets searchable with `tag:`/`deck:`/`note:`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoteIndexRow {
+    pub note_id: i64,
+    pub text: String,
+    pub tags: String,
+    pub deck: String,
+    pub notetype: String,
+}
+
 /// A single review event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Revlog {

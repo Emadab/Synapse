@@ -1,6 +1,6 @@
 [package]
 name = "synapse-search"
-description = "Full-text & faceted search over notes/cards/tags/decks via Tantivy, with an Anki-style query parser."
+description = "Full-text & faceted search over notes via Tantivy, with an Anki-style query parser."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,4 +9,4 @@ repository.workspace = true
 
 [dependencies]
 synapse-core.workspace = true
-# tantivy is added in M7.
+tantivy = "0.22"

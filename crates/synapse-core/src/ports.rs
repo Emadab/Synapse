@@ -7,7 +7,7 @@
 
 use crate::error::CoreResult;
 use crate::ipc::{NoteDetail, NoteOverview, StatsDto};
-use crate::model::{CanonicalModel, Deck, ImportSummary, Revlog, StudyCard};
+use crate::model::{CanonicalModel, Deck, ImportSummary, NoteIndexRow, Revlog, StudyCard};
 use crate::scheduling::CardState;
 
 /// Source of "now", injectable so scheduler tests are deterministic across the
@@ -107,6 +107,12 @@ pub trait Storage: Send + Sync {
 
     /// Aggregate statistics (review history, forecast, card maturity).
     fn stats(&self, today: i32, now_ms: i64) -> CoreResult<StatsDto>;
+
+    /// All notes flattened for (re)building the search index.
+    fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>>;
+
+    /// Browser rows for a set of note ids (e.g. search hits), any order.
+    fn notes_by_ids(&self, ids: &[i64]) -> CoreResult<Vec<NoteOverview>>;
 }
 
 /// On-disk media store (checksums, dedup, cleanup). Implemented by

@@ -4,6 +4,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use synapse_core::error::{CoreError, CoreResult};
 use synapse_core::ipc::{NoteDetail, NoteField, NoteOverview};
+use synapse_core::model::NoteIndexRow;
 
 const FIELD_SEP: char = '\u{1f}';
 
@@ -148,6 +149,59 @@ pub fn update_note(
         return Err(CoreError::NotFound(format!("note {note_id}")));
     }
     Ok(())
+}
+
+/// Flatten every note for the search index: plaintext field content + the
+/// note's note-type and (one of) its deck names.
+pub fn index_rows(conn: &Connection) -> CoreResult<Vec<NoteIndexRow>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT n.id, n.fields, n.tags,
+                COALESCE((SELECT d.name FROM cards c JOIN decks d ON d.id = c.deck_id
+                          WHERE c.note_id = n.id LIMIT 1), ''),
+                COALESCE(nt.name, '')
+             FROM notes n LEFT JOIN notetypes nt ON nt.id = n.notetype_id",
+        )
+        .map_err(err)?;
+    let rows = stmt
+        .query_map([], |r| {
+            let fields: String = r.get(1)?;
+            Ok(NoteIndexRow {
+                note_id: r.get(0)?,
+                text: strip_tags(&fields.replace(FIELD_SEP, " ")),
+                tags: r.get(2)?,
+                deck: r.get(3)?,
+                notetype: r.get(4)?,
+            })
+        })
+        .map_err(err)?;
+    rows.collect::<rusqlite::Result<_>>().map_err(err)
+}
+
+/// Browser rows for a set of note ids (search hits). Order is unspecified;
+/// callers that need rank order should reorder by their id list.
+pub fn notes_by_ids(conn: &Connection, ids: &[i64]) -> CoreResult<Vec<NoteOverview>> {
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let json = serde_json::to_string(ids).map_err(err)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, sort_field, tags FROM notes
+             WHERE id IN (SELECT value FROM json_each(?1))",
+        )
+        .map_err(err)?;
+    let rows = stmt
+        .query_map([json], |r| {
+            let tags: String = r.get(2)?;
+            Ok(NoteOverview {
+                note_id: r.get(0)?,
+                sort_field: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                tags: split_tags(&tags),
+            })
+        })
+        .map_err(err)?;
+    rows.collect::<rusqlite::Result<_>>().map_err(err)
 }
 
 #[cfg(test)]

@@ -39,6 +39,7 @@ export const ipc = {
 
   // Browser / editor
   listNotes: (query?: string) => invoke<NoteOverview[]>("list_notes", { query: query ?? null }),
+  searchNotes: (query: string) => invoke<NoteOverview[]>("search_notes", { query }),
   getNote: (noteId: number) => invoke<NoteDetail | null>("get_note", { noteId }),
   saveNote: (noteId: number, fields: string[], tags: string[]) =>
     invoke<void>("save_note", { noteId, fields, tags }),
