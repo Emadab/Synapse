@@ -10,5 +10,7 @@
 mod pb;
 pub mod reader;
 pub mod testkit;
+pub mod writer;
 
 pub use reader::read_package;
+pub use writer::write_apkg;

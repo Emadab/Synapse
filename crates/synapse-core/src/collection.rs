@@ -94,6 +94,11 @@ impl Collection {
         self.storage.index_rows()
     }
 
+    /// Dump the full collection for export (`.apkg`/`.colpkg`).
+    pub fn dump_collection(&self) -> CoreResult<CanonicalModel> {
+        self.storage.dump_collection()
+    }
+
     /// Browser rows for a set of note ids (search hits).
     pub fn notes_by_ids(&self, ids: &[i64]) -> CoreResult<Vec<NoteOverview>> {
         self.storage.notes_by_ids(ids)
@@ -344,6 +349,9 @@ mod tests {
         }
         fn notes_by_ids(&self, _ids: &[i64]) -> CoreResult<Vec<NoteOverview>> {
             Ok(vec![])
+        }
+        fn dump_collection(&self) -> CoreResult<CanonicalModel> {
+            Ok(CanonicalModel::default())
         }
     }
 

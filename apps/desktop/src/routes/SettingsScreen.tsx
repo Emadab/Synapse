@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
 import { useTheme, type Theme } from "@/stores/theme";
+import { isTauri, pickAndExportPackage, errorMessage } from "@/lib/ipc";
 
 const themes: { value: Theme; label: string }[] = [
   { value: "light", label: "Light" },
@@ -10,6 +12,8 @@ const themes: { value: Theme; label: string }[] = [
 
 export function SettingsScreen() {
   const { theme, setTheme } = useTheme();
+  const tauri = isTauri();
+  const [exportState, setExportState] = useState<"idle" | "busy" | "done" | string>("idle");
 
   return (
     <div className="flex h-full flex-col">
@@ -40,6 +44,41 @@ export function SettingsScreen() {
             SM-2 and FSRS will be selectable per deck. Wired up in milestone M3.
           </p>
         </section>
+
+        {tauri && (
+          <section className="mt-8 max-w-xl space-y-3">
+            <div>
+              <h2 className="text-sm font-medium">Export</h2>
+              <p className="text-sm text-muted-foreground">
+                Export your full collection as an Anki-compatible .apkg file.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={exportState === "busy"}
+                onClick={async () => {
+                  setExportState("busy");
+                  try {
+                    const count = await pickAndExportPackage();
+                    setExportState(count === null ? "idle" : "done");
+                  } catch (e) {
+                    setExportState(errorMessage(e));
+                  }
+                }}
+              >
+                {exportState === "busy" ? "Exporting…" : "Export .apkg"}
+              </Button>
+              {exportState === "done" && (
+                <span className="text-sm text-muted-foreground">Exported.</span>
+              )}
+              {exportState !== "idle" && exportState !== "busy" && exportState !== "done" && (
+                <span className="text-sm text-destructive">{exportState}</span>
+              )}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

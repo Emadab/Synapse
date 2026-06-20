@@ -48,9 +48,26 @@ export const ipc = {
   undo: () => invoke<string | null>("undo"),
   undoStatus: () => invoke<string | null>("undo_status"),
 
+  // Export
+  exportPackage: (path: string) => invoke<number>("export_package", { path }),
+
   // Statistics
   getStats: () => invoke<StatsDto>("get_stats"),
 };
+
+/**
+ * Prompt for a save location and export the full collection as `.apkg`.
+ * Returns the number of media files written, or `null` if user cancelled.
+ */
+export async function pickAndExportPackage(): Promise<number | null> {
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const selected = await save({
+    defaultPath: "collection.apkg",
+    filters: [{ name: "Anki package", extensions: ["apkg"] }],
+  });
+  if (typeof selected !== "string") return null;
+  return ipc.exportPackage(selected);
+}
 
 /**
  * Prompt for an .apkg/.colpkg and import it. Returns the summary, or `null` if

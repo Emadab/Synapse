@@ -6,6 +6,7 @@
 //! full-text search lives in Tantivy (`synapse-search`), not here.
 
 pub mod browse;
+pub mod export;
 pub mod import;
 pub mod migrations;
 pub mod schema;

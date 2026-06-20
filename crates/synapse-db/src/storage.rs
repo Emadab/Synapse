@@ -16,7 +16,7 @@ use synapse_core::ports::Storage;
 use synapse_core::scheduling::CardState;
 
 use crate::schema::grave_kind;
-use crate::{browse, import, migrations, stats, study};
+use crate::{browse, export, import, migrations, stats, study};
 
 const DECK_COLUMNS: &str = r#"id, name, parent_id, config_id, "mod", usn, collapsed, is_filtered"#;
 
@@ -263,6 +263,10 @@ impl Storage for SqliteStorage {
 
     fn notes_by_ids(&self, ids: &[i64]) -> CoreResult<Vec<NoteOverview>> {
         browse::notes_by_ids(&self.lock(), ids)
+    }
+
+    fn dump_collection(&self) -> CoreResult<CanonicalModel> {
+        export::dump_collection(&self.lock())
     }
 }
 

@@ -95,6 +95,7 @@ pub fn run() {
             commands::browse::get_note,
             commands::browse::save_note,
             commands::browse::search_notes,
+            commands::export::export_package,
             commands::stats::get_stats,
         ])
         .run(tauri::generate_context!())

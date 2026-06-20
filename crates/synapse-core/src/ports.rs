@@ -113,6 +113,9 @@ pub trait Storage: Send + Sync {
 
     /// Browser rows for a set of note ids (e.g. search hits), any order.
     fn notes_by_ids(&self, ids: &[i64]) -> CoreResult<Vec<NoteOverview>>;
+
+    /// Dump the full collection as a `CanonicalModel` for export.
+    fn dump_collection(&self) -> CoreResult<CanonicalModel>;
 }
 
 /// On-disk media store (checksums, dedup, cleanup). Implemented by
