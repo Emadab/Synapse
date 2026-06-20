@@ -4,4 +4,8 @@
  * A card presented for study: rendered HTML for both sides plus the
  * human-readable next-interval label for each of the four answer buttons.
  */
-export type StudyCardDto = { card_id: number, deck_id: number, question: string, answer: string, again: string, hard: string, good: string, easy: string, };
+export type StudyCardDto = { card_id: number, deck_id: number, question: string, answer: string, again: string, hard: string, good: string, easy: string, 
+/**
+ * Cards still due in this deck (including this one).
+ */
+remaining: number, };

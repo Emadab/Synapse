@@ -4,4 +4,8 @@
  * Basic identity of the running application, surfaced on the home screen and
  * the About page.
  */
-export type AppInfo = { name: string, version: string, tauri_version: string, };
+export type AppInfo = { name: string, version: string, tauri_version: string, 
+/**
+ * Absolute path to the `collection.media` directory on disk.
+ */
+media_dir: string, };

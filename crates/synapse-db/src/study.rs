@@ -1,6 +1,8 @@
 //! Study-queue queries and answer persistence. Free functions over a
 //! `Connection`/`Transaction`, called by `SqliteStorage`.
 
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use synapse_core::error::{CoreError, CoreResult};
 use synapse_core::model::{CardRender, Revlog, StudyCard};
@@ -57,6 +59,50 @@ pub fn due_card_ids(conn: &Connection, deck_id: i64, today: i32) -> CoreResult<V
         .query_map(params![deck_id, today], |r| r.get(0))
         .map_err(err)?;
     rows.collect::<rusqlite::Result<_>>().map_err(err)
+}
+
+pub fn count_due(conn: &Connection, deck_id: i64, today: i32) -> CoreResult<u32> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM cards
+         WHERE deck_id = ?1 AND queue NOT IN (-1, -2, -3)
+           AND (type = 0 OR type = 1 OR type = 3 OR (type = 2 AND due <= ?2))",
+        params![deck_id, today],
+        |r| r.get::<_, u32>(0),
+    )
+    .map_err(err)
+}
+
+pub fn deck_due_counts(
+    conn: &Connection,
+    today: i32,
+) -> CoreResult<HashMap<i64, (u32, u32, u32)>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT deck_id,
+                    SUM(CASE WHEN type = 0 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN type IN (1, 3) THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN type = 2 AND due <= ?1 THEN 1 ELSE 0 END)
+             FROM cards
+             WHERE queue NOT IN (-1, -2, -3)
+             GROUP BY deck_id",
+        )
+        .map_err(err)?;
+    let mut map = HashMap::new();
+    let rows = stmt
+        .query_map([today], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, u32>(1)?,
+                r.get::<_, u32>(2)?,
+                r.get::<_, u32>(3)?,
+            ))
+        })
+        .map_err(err)?;
+    for row in rows {
+        let (deck_id, new, learning, review) = row.map_err(err)?;
+        map.insert(deck_id, (new, learning, review));
+    }
+    Ok(map)
 }
 
 pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCard>> {

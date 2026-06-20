@@ -53,6 +53,24 @@ impl Collection {
         self.clock.now_ms()
     }
 
+    /// Decks with per-type card counts `(new, learning, review)`.
+    pub fn list_decks_with_counts(&self) -> CoreResult<Vec<(Deck, (u32, u32, u32))>> {
+        let decks = self.storage.list_decks()?;
+        let counts = self.storage.deck_due_counts(self.today())?;
+        Ok(decks
+            .into_iter()
+            .map(|d| {
+                let c = counts.get(&d.id).copied().unwrap_or((0, 0, 0));
+                (d, c)
+            })
+            .collect())
+    }
+
+    /// Count of studyable cards in `deck_id` right now.
+    pub fn count_due(&self, deck_id: i64) -> CoreResult<u32> {
+        self.storage.count_due(deck_id, self.today())
+    }
+
     /// The next card to study in a deck, if any.
     pub fn next_card(&self, deck_id: i64) -> CoreResult<Option<StudyCard>> {
         match self.storage.due_card_ids(deck_id, self.today())?.first() {
@@ -313,6 +331,15 @@ mod tests {
         }
         fn due_card_ids(&self, _deck_id: i64, _today: i32) -> CoreResult<Vec<i64>> {
             Ok(vec![])
+        }
+        fn count_due(&self, _deck_id: i64, _today: i32) -> CoreResult<u32> {
+            Ok(0)
+        }
+        fn deck_due_counts(
+            &self,
+            _today: i32,
+        ) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
+            Ok(std::collections::HashMap::new())
         }
         fn study_card(&self, _card_id: i64) -> CoreResult<Option<StudyCard>> {
             Ok(None)

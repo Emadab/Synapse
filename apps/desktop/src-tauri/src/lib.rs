@@ -8,10 +8,27 @@ mod commands;
 
 use std::sync::{Arc, Mutex};
 
+use percent_encoding::percent_decode_str;
 use synapse_core::{Collection, DomainEvent, SystemClock};
 use synapse_db::SqliteStorage;
 use synapse_search::NoteIndex;
 use tauri::{Emitter, Manager};
+
+fn mime_for(filename: &str) -> &'static str {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "mp3" => "audio/mpeg",
+        "ogg" => "audio/ogg",
+        "wav" => "audio/wav",
+        "mp4" => "video/mp4",
+        _ => "application/octet-stream",
+    }
+}
 
 /// Tauri managed state wrapping the search index.
 pub struct SearchState(pub Mutex<NoteIndex>);
@@ -37,6 +54,43 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("synapse-media", |app, request| {
+            // Serve files from <app-data>/collection.media/<filename>.
+            // Only the last path component is used (no traversal).
+            let uri = request.uri();
+            let encoded = uri.path().trim_start_matches('/');
+            let decoded = percent_decode_str(encoded)
+                .decode_utf8_lossy()
+                .into_owned();
+            let filename = std::path::Path::new(&decoded)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            let media_dir = app
+                .app_handle()
+                .path()
+                .app_data_dir()
+                .map(|p| p.join("collection.media"))
+                .unwrap_or_default();
+            let file_path = media_dir.join(&filename);
+
+            match std::fs::read(&file_path) {
+                Ok(body) => {
+                    let mime = mime_for(&filename);
+                    tauri::http::Response::builder()
+                        .header("Content-Type", mime)
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(body)
+                        .unwrap()
+                }
+                Err(_) => tauri::http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .unwrap(),
+            }
+        })
         .setup(|app| {
             // Open (or create) the collection under the OS app-data directory.
             let dir = app.path().app_data_dir()?;

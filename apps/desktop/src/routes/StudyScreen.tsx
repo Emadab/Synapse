@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { ipc, isTauri, Rating, type RatingValue } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
+import { resolveCardMedia } from "@/lib/media";
 
 export function StudyScreen() {
   const tauri = isTauri();
@@ -15,6 +16,15 @@ export function StudyScreen() {
     return <DeckPicker enabled={tauri} onPick={setDeckId} />;
   }
   return <Session deckId={deckId} onExit={() => setDeckId(null)} />;
+}
+
+function CountBadge({ count, color }: { count: number; color: string }) {
+  if (count === 0) return null;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${color}`}>
+      {count}
+    </span>
+  );
 }
 
 function DeckPicker({ enabled, onPick }: { enabled: boolean; onPick: (id: number) => void }) {
@@ -38,8 +48,22 @@ function DeckPicker({ enabled, onPick }: { enabled: boolean; onPick: (id: number
                   className="flex w-full items-center gap-3 rounded-lg border border-border px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-accent"
                   onClick={() => onPick(deck.id)}
                 >
-                  <Layers className="size-4 text-muted-foreground" />
-                  {deck.name}
+                  <Layers className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1 truncate">{deck.name}</span>
+                  <span className="flex items-center gap-1">
+                    <CountBadge
+                      count={deck.new_count}
+                      color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                    />
+                    <CountBadge
+                      count={deck.learning_count}
+                      color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                    />
+                    <CountBadge
+                      count={deck.review_count}
+                      color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                    />
+                  </span>
                 </button>
               </li>
             ))}
@@ -51,6 +75,7 @@ function DeckPicker({ enabled, onPick }: { enabled: boolean; onPick: (id: number
 }
 
 function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
+  const tauri = isTauri();
   const queryClient = useQueryClient();
   const [revealed, setRevealed] = useState(false);
 
@@ -88,20 +113,33 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [card, revealed, answerMut]);
 
+  const questionHtml = card ? (tauri ? resolveCardMedia(card.question) : card.question) : "";
+  const answerHtml = card ? (tauri ? resolveCardMedia(card.answer) : card.answer) : "";
+
   return (
     <div className="flex h-full flex-col">
       <ScreenHeader
         title="Studying"
         actions={
-          <Button variant="ghost" size="sm" onClick={onExit}>
-            Back to decks
-          </Button>
+          <div className="flex items-center gap-3">
+            {card && card.remaining > 0 && (
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {card.remaining} remaining
+              </span>
+            )}
+            <Button variant="ghost" size="sm" onClick={onExit}>
+              Back to decks
+            </Button>
+          </div>
         }
       />
       {card ? (
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-8">
-          <div className="synapse-card flex-1 rounded-xl border border-border bg-card p-8 text-card-foreground">
-            <div dangerouslySetInnerHTML={{ __html: revealed ? card.answer : card.question }} />
+          <div className="synapse-card flex-1 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto">
+            <div
+              key={card.card_id + (revealed ? "a" : "q")}
+              dangerouslySetInnerHTML={{ __html: revealed ? answerHtml : questionHtml }}
+            />
           </div>
 
           <div className="mt-6">

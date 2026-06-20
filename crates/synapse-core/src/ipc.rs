@@ -20,9 +20,11 @@ pub struct AppInfo {
     pub name: String,
     pub version: String,
     pub tauri_version: String,
+    /// Absolute path to the `collection.media` directory on disk.
+    pub media_dir: String,
 }
 
-/// A deck as shown in the deck browser / sidebar tree.
+/// A deck as shown in the deck browser / sidebar tree, with due-card counts.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct DeckSummary {
@@ -31,6 +33,22 @@ pub struct DeckSummary {
     pub name: String,
     #[ts(type = "number | null")]
     pub parent_id: Option<i64>,
+    pub new_count: u32,
+    pub learning_count: u32,
+    pub review_count: u32,
+}
+
+impl DeckSummary {
+    pub fn with_counts(deck: Deck, counts: (u32, u32, u32)) -> Self {
+        Self {
+            id: deck.id,
+            name: deck.name,
+            parent_id: deck.parent_id,
+            new_count: counts.0,
+            learning_count: counts.1,
+            review_count: counts.2,
+        }
+    }
 }
 
 impl From<Deck> for DeckSummary {
@@ -39,6 +57,9 @@ impl From<Deck> for DeckSummary {
             id: deck.id,
             name: deck.name,
             parent_id: deck.parent_id,
+            new_count: 0,
+            learning_count: 0,
+            review_count: 0,
         }
     }
 }
@@ -58,6 +79,8 @@ pub struct StudyCardDto {
     pub hard: String,
     pub good: String,
     pub easy: String,
+    /// Cards still due in this deck (including this one).
+    pub remaining: u32,
 }
 
 /// A single note field (name + HTML value), in note order.

@@ -217,6 +217,14 @@ impl Storage for SqliteStorage {
         study::due_card_ids(&self.lock(), deck_id, today)
     }
 
+    fn count_due(&self, deck_id: i64, today: i32) -> CoreResult<u32> {
+        study::count_due(&self.lock(), deck_id, today)
+    }
+
+    fn deck_due_counts(&self, today: i32) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
+        study::deck_due_counts(&self.lock(), today)
+    }
+
     fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>> {
         study::study_card(&self.lock(), card_id)
     }

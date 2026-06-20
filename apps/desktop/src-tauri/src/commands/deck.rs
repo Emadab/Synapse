@@ -10,9 +10,9 @@ type IpcResult<T> = Result<T, IpcError>;
 #[tauri::command]
 pub fn list_decks(collection: State<'_, Collection>) -> IpcResult<Vec<DeckSummary>> {
     Ok(collection
-        .list_decks()?
+        .list_decks_with_counts()?
         .into_iter()
-        .map(DeckSummary::from)
+        .map(|(deck, counts)| DeckSummary::with_counts(deck, counts))
         .collect())
 }
 

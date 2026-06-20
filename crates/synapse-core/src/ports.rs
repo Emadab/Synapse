@@ -5,6 +5,8 @@
 //! `synapse-scheduler` implements [`Scheduler`], and so on. Tests inject fakes
 //! (notably [`FixedClock`]) so behaviour is deterministic.
 
+use std::collections::HashMap;
+
 use crate::error::CoreResult;
 use crate::ipc::{NoteDetail, NoteOverview, StatsDto};
 use crate::model::{CanonicalModel, Deck, ImportSummary, NoteIndexRow, Revlog, StudyCard};
@@ -76,6 +78,13 @@ pub trait Storage: Send + Sync {
     /// Ids of cards in `deck_id` that are studyable on `today` (new cards, due
     /// reviews, and learning/relearning), in study order.
     fn due_card_ids(&self, deck_id: i64, today: i32) -> CoreResult<Vec<i64>>;
+
+    /// Count of studyable cards in `deck_id` on `today` (no LIMIT).
+    fn count_due(&self, deck_id: i64, today: i32) -> CoreResult<u32>;
+
+    /// Per-deck card-type counts for all decks. Returns `(new, learning, review)`
+    /// keyed by deck_id. Only decks with at least one non-suspended card appear.
+    fn deck_due_counts(&self, today: i32) -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
 
     /// Render inputs + scheduling state for one card.
     fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>>;

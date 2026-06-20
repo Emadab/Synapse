@@ -2,6 +2,15 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Layers, Plus, Trash2, Undo2 } from "lucide-react";
 import type { DeckSummary, ImportSummary } from "@synapse/ipc-types";
+
+function CountBadge({ count, color }: { count: number; color: string }) {
+  if (count === 0) return null;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${color}`}>
+      {count}
+    </span>
+  );
+}
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -173,6 +182,20 @@ export function DeckBrowserScreen() {
               >
                 <Layers className="size-4 shrink-0 text-muted-foreground" />
                 <span className="flex-1 truncate text-sm font-medium">{deckLabel(deck.name)}</span>
+                <span className="flex items-center gap-1">
+                  <CountBadge
+                    count={deck.new_count}
+                    color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                  />
+                  <CountBadge
+                    count={deck.learning_count}
+                    color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                  />
+                  <CountBadge
+                    count={deck.review_count}
+                    color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                  />
+                </span>
                 <Button
                   variant="ghost"
                   size="icon"

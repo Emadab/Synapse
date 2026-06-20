@@ -102,6 +102,7 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
         config,
     };
     let previews = scheduler.preview(&card.state, &ctx);
+    let remaining = collection.count_due(card.deck_id).unwrap_or(0);
 
     StudyCardDto {
         card_id: card.id,
@@ -112,6 +113,7 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
         hard: label(previews.hard),
         good: label(previews.good),
         easy: label(previews.easy),
+        remaining,
     }
 }
 
