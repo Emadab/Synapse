@@ -5,6 +5,7 @@
 export type { AppInfo } from "./generated/AppInfo";
 export type { Algorithm } from "./generated/Algorithm";
 export type { Rating } from "./generated/Rating";
+export type { DeckOptions } from "./generated/DeckOptions";
 export type { DeckSummary } from "./generated/DeckSummary";
 export type { ImportSummary } from "./generated/ImportSummary";
 export type { IpcError } from "./generated/IpcError";

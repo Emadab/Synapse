@@ -142,6 +142,8 @@ pub fn run() {
             commands::deck::delete_deck,
             commands::deck::undo,
             commands::deck::undo_status,
+            commands::deck::get_deck_options,
+            commands::deck::set_deck_options,
             commands::import::import_package,
             commands::study::get_next_card,
             commands::study::answer_card,

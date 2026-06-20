@@ -53,30 +53,89 @@ impl Collection {
         self.clock.now_ms()
     }
 
-    /// Decks with per-type card counts `(new, learning, review)`.
+    /// Remaining daily limits `(new, review)` for `deck_id` after subtracting
+    /// cards already studied today.
+    fn remaining_limits(&self, deck_id: i64) -> CoreResult<(u32, u32)> {
+        let deck = self
+            .storage
+            .deck_by_id(deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        let (new_per_day, rev_per_day) = self.storage.deck_limits(deck.config_id)?;
+        let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
+        let (new_studied, rev_studied) = self.storage.today_studied(deck_id, today_start_ms)?;
+        Ok((
+            new_per_day.saturating_sub(new_studied),
+            rev_per_day.saturating_sub(rev_studied),
+        ))
+    }
+
+    /// Decks with per-type card counts `(new, learning, review)`, capped by daily limits.
     pub fn list_decks_with_counts(&self) -> CoreResult<Vec<(Deck, (u32, u32, u32))>> {
         let decks = self.storage.list_decks()?;
-        let counts = self.storage.deck_due_counts(self.today())?;
+        let raw_counts = self.storage.deck_due_counts(self.today())?;
+        let all_limits = self.storage.all_deck_limits()?;
+        let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
+        let studied = self.storage.all_today_studied(today_start_ms)?;
         Ok(decks
             .into_iter()
             .map(|d| {
-                let c = counts.get(&d.id).copied().unwrap_or((0, 0, 0));
-                (d, c)
+                let (new_raw, learning, review_raw) =
+                    raw_counts.get(&d.id).copied().unwrap_or((0, 0, 0));
+                let (new_per_day, rev_per_day) =
+                    all_limits.get(&d.config_id).copied().unwrap_or((20, 200));
+                let (new_studied, rev_studied) =
+                    studied.get(&d.id).copied().unwrap_or((0, 0));
+                let capped = (
+                    new_raw.min(new_per_day.saturating_sub(new_studied)),
+                    learning,
+                    review_raw.min(rev_per_day.saturating_sub(rev_studied)),
+                );
+                (d, capped)
             })
             .collect())
     }
 
-    /// Count of studyable cards in `deck_id` right now.
+    /// Count of studyable cards in `deck_id` right now (respects daily limits).
     pub fn count_due(&self, deck_id: i64) -> CoreResult<u32> {
-        self.storage.count_due(deck_id, self.today())
+        let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
+        self.storage.count_due(deck_id, self.today(), new_limit, review_limit)
     }
 
-    /// The next card to study in a deck, if any.
+    /// The next card to study in a deck, if any (respects daily limits).
     pub fn next_card(&self, deck_id: i64) -> CoreResult<Option<StudyCard>> {
-        match self.storage.due_card_ids(deck_id, self.today())?.first() {
+        let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
+        match self
+            .storage
+            .due_card_ids(deck_id, self.today(), new_limit, review_limit)?
+            .first()
+        {
             Some(&id) => self.storage.study_card(id),
             None => Ok(None),
         }
+    }
+
+    /// Current `(new_per_day, review_per_day)` limit for a deck.
+    pub fn get_deck_options(&self, deck_id: i64) -> CoreResult<(u32, u32)> {
+        let deck = self
+            .storage
+            .deck_by_id(deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        self.storage.deck_limits(deck.config_id)
+    }
+
+    /// Persist updated daily limits for a deck.
+    pub fn set_deck_options(
+        &self,
+        deck_id: i64,
+        new_per_day: u32,
+        rev_per_day: u32,
+    ) -> CoreResult<()> {
+        let deck = self
+            .storage
+            .deck_by_id(deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        self.storage
+            .set_deck_limits(deck.config_id, new_per_day, rev_per_day, self.now_ms())
     }
 
     /// Render inputs + scheduling state for a specific card.
@@ -329,10 +388,22 @@ mod tests {
         fn ensure_collection(&self, _now_ms: i64) -> CoreResult<i64> {
             Ok(0)
         }
-        fn due_card_ids(&self, _deck_id: i64, _today: i32) -> CoreResult<Vec<i64>> {
+        fn due_card_ids(
+            &self,
+            _deck_id: i64,
+            _today: i32,
+            _new_limit: u32,
+            _review_limit: u32,
+        ) -> CoreResult<Vec<i64>> {
             Ok(vec![])
         }
-        fn count_due(&self, _deck_id: i64, _today: i32) -> CoreResult<u32> {
+        fn count_due(
+            &self,
+            _deck_id: i64,
+            _today: i32,
+            _new_limit: u32,
+            _review_limit: u32,
+        ) -> CoreResult<u32> {
             Ok(0)
         }
         fn deck_due_counts(
@@ -340,6 +411,30 @@ mod tests {
             _today: i32,
         ) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
             Ok(std::collections::HashMap::new())
+        }
+        fn deck_limits(&self, _config_id: i64) -> CoreResult<(u32, u32)> {
+            Ok((20, 200))
+        }
+        fn all_deck_limits(&self) -> CoreResult<std::collections::HashMap<i64, (u32, u32)>> {
+            Ok(std::collections::HashMap::new())
+        }
+        fn today_studied(&self, _deck_id: i64, _today_start_ms: i64) -> CoreResult<(u32, u32)> {
+            Ok((0, 0))
+        }
+        fn all_today_studied(
+            &self,
+            _today_start_ms: i64,
+        ) -> CoreResult<std::collections::HashMap<i64, (u32, u32)>> {
+            Ok(std::collections::HashMap::new())
+        }
+        fn set_deck_limits(
+            &self,
+            _config_id: i64,
+            _new_per_day: u32,
+            _rev_per_day: u32,
+            _now_ms: i64,
+        ) -> CoreResult<()> {
+            Ok(())
         }
         fn study_card(&self, _card_id: i64) -> CoreResult<Option<StudyCard>> {
             Ok(None)

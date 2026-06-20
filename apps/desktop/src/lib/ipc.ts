@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AppInfo,
+  DeckOptions,
   DeckSummary,
   ImportSummary,
   IpcError,
@@ -28,6 +29,12 @@ export const ipc = {
   createDeck: (name: string) => invoke<DeckSummary>("create_deck", { name }),
   renameDeck: (id: number, name: string) => invoke<void>("rename_deck", { id, name }),
   deleteDeck: (id: number) => invoke<void>("delete_deck", { id }),
+
+  // Deck options
+  getDeckOptions: (deckId: number) =>
+    invoke<DeckOptions>("get_deck_options", { deckId }),
+  setDeckOptions: (deckId: number, newPerDay: number, reviewPerDay: number) =>
+    invoke<void>("set_deck_options", { deckId, newPerDay, reviewPerDay }),
 
   // Import
   importPackage: (path: string) => invoke<ImportSummary>("import_package", { path }),

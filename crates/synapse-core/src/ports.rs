@@ -75,16 +75,50 @@ pub trait Storage: Send + Sync {
     /// (ms), which anchors the day-number used for scheduling.
     fn ensure_collection(&self, now_ms: i64) -> CoreResult<i64>;
 
-    /// Ids of cards in `deck_id` that are studyable on `today` (new cards, due
-    /// reviews, and learning/relearning), in study order.
-    fn due_card_ids(&self, deck_id: i64, today: i32) -> CoreResult<Vec<i64>>;
+    /// Ids of cards in `deck_id` that are studyable on `today`, respecting daily
+    /// limits. New and review cards are returned in random order; learning cards
+    /// come first (ordered by due).
+    fn due_card_ids(
+        &self,
+        deck_id: i64,
+        today: i32,
+        new_limit: u32,
+        review_limit: u32,
+    ) -> CoreResult<Vec<i64>>;
 
-    /// Count of studyable cards in `deck_id` on `today` (no LIMIT).
-    fn count_due(&self, deck_id: i64, today: i32) -> CoreResult<u32>;
+    /// Count of studyable cards in `deck_id` on `today`, capped by limits.
+    fn count_due(
+        &self,
+        deck_id: i64,
+        today: i32,
+        new_limit: u32,
+        review_limit: u32,
+    ) -> CoreResult<u32>;
 
-    /// Per-deck card-type counts for all decks. Returns `(new, learning, review)`
-    /// keyed by deck_id. Only decks with at least one non-suspended card appear.
+    /// Per-deck card-type counts (raw, pre-limit). Keyed by deck_id.
     fn deck_due_counts(&self, today: i32) -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
+
+    /// `(new_per_day, rev_per_day)` from the deck config's JSON.
+    fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)>;
+
+    /// `(new_per_day, rev_per_day)` for every config row. Keyed by config_id.
+    fn all_deck_limits(&self) -> CoreResult<HashMap<i64, (u32, u32)>>;
+
+    /// Cards from `deck_id` studied today, split by type. `today_start_ms` is the
+    /// epoch-ms start of the current scheduling day.
+    fn today_studied(&self, deck_id: i64, today_start_ms: i64) -> CoreResult<(u32, u32)>;
+
+    /// Today-studied counts for all decks in one query. Keyed by deck_id.
+    fn all_today_studied(&self, today_start_ms: i64) -> CoreResult<HashMap<i64, (u32, u32)>>;
+
+    /// Persist updated `new_per_day` / `rev_per_day` in the config JSON.
+    fn set_deck_limits(
+        &self,
+        config_id: i64,
+        new_per_day: u32,
+        rev_per_day: u32,
+        now_ms: i64,
+    ) -> CoreResult<()>;
 
     /// Render inputs + scheduling state for one card.
     fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>>;

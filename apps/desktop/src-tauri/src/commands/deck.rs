@@ -1,7 +1,7 @@
 //! Deck commands. Delegate to the managed [`Collection`]; `?` converts
 //! `CoreError` into the serialisable [`IpcError`] union returned to the UI.
 
-use synapse_core::ipc::{DeckSummary, IpcError};
+use synapse_core::ipc::{DeckOptions, DeckSummary, IpcError};
 use synapse_core::Collection;
 use tauri::State;
 
@@ -41,4 +41,24 @@ pub fn undo(collection: State<'_, Collection>) -> IpcResult<Option<String>> {
 #[tauri::command]
 pub fn undo_status(collection: State<'_, Collection>) -> IpcResult<Option<String>> {
     Ok(collection.undo_status())
+}
+
+#[tauri::command]
+pub fn get_deck_options(
+    collection: State<'_, Collection>,
+    deck_id: i64,
+) -> IpcResult<DeckOptions> {
+    let (new_per_day, review_per_day) = collection.get_deck_options(deck_id)?;
+    Ok(DeckOptions { deck_id, new_per_day, review_per_day })
+}
+
+#[tauri::command]
+pub fn set_deck_options(
+    collection: State<'_, Collection>,
+    deck_id: i64,
+    new_per_day: u32,
+    review_per_day: u32,
+) -> IpcResult<()> {
+    collection.set_deck_options(deck_id, new_per_day, review_per_day)?;
+    Ok(())
 }

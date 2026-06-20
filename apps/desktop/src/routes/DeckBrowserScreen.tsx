@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Layers, Plus, Trash2, Undo2 } from "lucide-react";
+import { Download, Layers, Plus, Settings, Trash2, Undo2 } from "lucide-react";
 import type { DeckSummary, ImportSummary } from "@synapse/ipc-types";
 
 function CountBadge({ count, color }: { count: number; color: string }) {
@@ -47,6 +47,31 @@ export function DeckBrowserScreen() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [lastImport, setLastImport] = useState<ImportSummary | null>(null);
+
+  const [settingsDeckId, setSettingsDeckId] = useState<number | null>(null);
+  const [settingsNew, setSettingsNew] = useState(20);
+  const [settingsRev, setSettingsRev] = useState(200);
+
+  const openSettings = async (deck: DeckSummary) => {
+    setSettingsDeckId(deck.id);
+    try {
+      const opts = await ipc.getDeckOptions(deck.id);
+      setSettingsNew(opts.new_per_day);
+      setSettingsRev(opts.review_per_day);
+    } catch {
+      setSettingsNew(20);
+      setSettingsRev(200);
+    }
+  };
+
+  const saveOptionsMut = useMutation({
+    mutationFn: ({ id, n, r }: { id: number; n: number; r: number }) =>
+      ipc.setDeckOptions(id, n, r),
+    onSuccess: () => {
+      setSettingsDeckId(null);
+      void invalidateDecks();
+    },
+  });
 
   const importMut = useMutation({
     mutationFn: pickAndImportPackage,
@@ -175,38 +200,98 @@ export function DeckBrowserScreen() {
         ) : (
           <ul className="divide-y divide-border">
             {decks.map((deck: DeckSummary) => (
-              <li
-                key={deck.id}
-                className="group flex items-center gap-3 px-8 py-3 hover:bg-accent/40"
-                style={{ paddingLeft: `${2 + deckDepth(deck.name) * 1.25}rem` }}
-              >
-                <Layers className="size-4 shrink-0 text-muted-foreground" />
-                <span className="flex-1 truncate text-sm font-medium">{deckLabel(deck.name)}</span>
-                <span className="flex items-center gap-1">
-                  <CountBadge
-                    count={deck.new_count}
-                    color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                  />
-                  <CountBadge
-                    count={deck.learning_count}
-                    color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                  />
-                  <CountBadge
-                    count={deck.review_count}
-                    color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                  />
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Delete ${deck.name}`}
-                  className="opacity-0 transition-opacity group-hover:opacity-100"
-                  onClick={() => deleteMut.mutate(deck.id)}
-                  disabled={deleteMut.isPending}
+              <Fragment key={deck.id}>
+                <li
+                  className="group flex items-center gap-3 px-8 py-3 hover:bg-accent/40"
+                  style={{ paddingLeft: `${2 + deckDepth(deck.name) * 1.25}rem` }}
                 >
-                  <Trash2 className="text-destructive" />
-                </Button>
-              </li>
+                  <Layers className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1 truncate text-sm font-medium">{deckLabel(deck.name)}</span>
+                  <span className="flex items-center gap-1">
+                    <CountBadge
+                      count={deck.new_count}
+                      color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                    />
+                    <CountBadge
+                      count={deck.learning_count}
+                      color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                    />
+                    <CountBadge
+                      count={deck.review_count}
+                      color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                    />
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Settings for ${deck.name}`}
+                    className="opacity-0 transition-opacity group-hover:opacity-100"
+                    onClick={() =>
+                      settingsDeckId === deck.id
+                        ? setSettingsDeckId(null)
+                        : void openSettings(deck)
+                    }
+                  >
+                    <Settings className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Delete ${deck.name}`}
+                    className="opacity-0 transition-opacity group-hover:opacity-100"
+                    onClick={() => deleteMut.mutate(deck.id)}
+                    disabled={deleteMut.isPending}
+                  >
+                    <Trash2 className="text-destructive" />
+                  </Button>
+                </li>
+                {settingsDeckId === deck.id && (
+                  <li className="border-t border-border bg-secondary/40">
+                    <form
+                      className="flex flex-wrap items-center gap-3 px-8 py-3"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        saveOptionsMut.mutate({ id: deck.id, n: settingsNew, r: settingsRev });
+                      }}
+                    >
+                      <span className="text-xs font-medium text-muted-foreground">Daily limits:</span>
+                      <label className="flex items-center gap-1.5 text-xs">
+                        New
+                        <input
+                          type="number"
+                          min={0}
+                          max={9999}
+                          value={settingsNew}
+                          onChange={(e) => setSettingsNew(Number(e.target.value))}
+                          className="h-7 w-20 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs">
+                        Reviews
+                        <input
+                          type="number"
+                          min={0}
+                          max={9999}
+                          value={settingsRev}
+                          onChange={(e) => setSettingsRev(Number(e.target.value))}
+                          className="h-7 w-20 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      </label>
+                      <Button type="submit" size="sm" disabled={saveOptionsMut.isPending}>
+                        Save
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSettingsDeckId(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </form>
+                  </li>
+                )}
+              </Fragment>
             ))}
           </ul>
         )}

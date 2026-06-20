@@ -24,6 +24,16 @@ pub struct AppInfo {
     pub media_dir: String,
 }
 
+/// Per-deck daily scheduling limits.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DeckOptions {
+    #[ts(type = "number")]
+    pub deck_id: i64,
+    pub new_per_day: u32,
+    pub review_per_day: u32,
+}
+
 /// A deck as shown in the deck browser / sidebar tree, with due-card counts.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]

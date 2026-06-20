@@ -8,6 +8,113 @@ use synapse_core::error::{CoreError, CoreResult};
 use synapse_core::model::{CardRender, Revlog, StudyCard};
 use synapse_core::scheduling::{CardPhase, CardState};
 
+fn parse_limits(config_json: &str) -> (u32, u32) {
+    let v: serde_json::Value = serde_json::from_str(config_json).unwrap_or_default();
+    let new_per_day = v["new"]["perDay"].as_u64().unwrap_or(20) as u32;
+    let rev_per_day = v["rev"]["perDay"].as_u64().unwrap_or(200) as u32;
+    (new_per_day, rev_per_day)
+}
+
+pub fn deck_limits(conn: &Connection, config_id: i64) -> CoreResult<(u32, u32)> {
+    let json: String = conn
+        .query_row(
+            "SELECT config FROM deck_config WHERE id = ?1",
+            [config_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(err)?
+        .unwrap_or_else(|| "{}".to_string());
+    Ok(parse_limits(&json))
+}
+
+pub fn all_deck_limits(conn: &Connection) -> CoreResult<HashMap<i64, (u32, u32)>> {
+    let mut stmt = conn
+        .prepare("SELECT id, config FROM deck_config")
+        .map_err(err)?;
+    let mut map = HashMap::new();
+    let rows = stmt
+        .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+        .map_err(err)?;
+    for row in rows {
+        let (id, json) = row.map_err(err)?;
+        map.insert(id, parse_limits(&json));
+    }
+    Ok(map)
+}
+
+pub fn today_studied(
+    conn: &Connection,
+    deck_id: i64,
+    today_start_ms: i64,
+) -> CoreResult<(u32, u32)> {
+    conn.query_row(
+        "SELECT
+           COUNT(DISTINCT CASE WHEN r.review_kind = 0 THEN r.card_id END),
+           COUNT(DISTINCT CASE WHEN r.review_kind = 1 THEN r.card_id END)
+         FROM revlog r JOIN cards c ON c.id = r.card_id
+         WHERE c.deck_id = ?1 AND r.id >= ?2",
+        params![deck_id, today_start_ms],
+        |r| Ok((r.get::<_, u32>(0)?, r.get::<_, u32>(1)?)),
+    )
+    .map_err(err)
+}
+
+pub fn all_today_studied(
+    conn: &Connection,
+    today_start_ms: i64,
+) -> CoreResult<HashMap<i64, (u32, u32)>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT c.deck_id,
+               COUNT(DISTINCT CASE WHEN r.review_kind = 0 THEN r.card_id END),
+               COUNT(DISTINCT CASE WHEN r.review_kind = 1 THEN r.card_id END)
+             FROM revlog r JOIN cards c ON c.id = r.card_id
+             WHERE r.id >= ?1
+             GROUP BY c.deck_id",
+        )
+        .map_err(err)?;
+    let mut map = HashMap::new();
+    let rows = stmt
+        .query_map([today_start_ms], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?, r.get::<_, u32>(2)?))
+        })
+        .map_err(err)?;
+    for row in rows {
+        let (deck_id, new_studied, rev_studied) = row.map_err(err)?;
+        map.insert(deck_id, (new_studied, rev_studied));
+    }
+    Ok(map)
+}
+
+pub fn set_deck_limits(
+    conn: &Connection,
+    config_id: i64,
+    new_per_day: u32,
+    rev_per_day: u32,
+    now_ms: i64,
+) -> CoreResult<()> {
+    let json: String = conn
+        .query_row(
+            "SELECT config FROM deck_config WHERE id = ?1",
+            [config_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(err)?
+        .unwrap_or_else(|| "{}".to_string());
+    let mut v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+    v["new"]["perDay"] = serde_json::Value::Number(new_per_day.into());
+    v["rev"]["perDay"] = serde_json::Value::Number(rev_per_day.into());
+    let new_json = serde_json::to_string(&v).map_err(|e| err(e))?;
+    conn.execute(
+        r#"UPDATE deck_config SET config = ?1, "mod" = ?2 WHERE id = ?3"#,
+        params![new_json, now_ms, config_id],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
 fn err(e: impl std::fmt::Display) -> CoreError {
     CoreError::Storage(e.to_string())
 }
@@ -45,31 +152,93 @@ pub fn ensure_collection(conn: &Connection, now_ms: i64) -> CoreResult<i64> {
     .map_err(err)
 }
 
-pub fn due_card_ids(conn: &Connection, deck_id: i64, today: i32) -> CoreResult<Vec<i64>> {
+pub fn due_card_ids(
+    conn: &Connection,
+    deck_id: i64,
+    today: i32,
+    new_limit: u32,
+    review_limit: u32,
+) -> CoreResult<Vec<i64>> {
+    // 1. Learning/relearning — time-critical, no cap, ordered by due
     let mut stmt = conn
         .prepare(
-            "SELECT id FROM cards
-             WHERE deck_id = ?1 AND queue NOT IN (-1, -2, -3)
-               AND (type = 0 OR type = 1 OR type = 3 OR (type = 2 AND due <= ?2))
-             ORDER BY (CASE type WHEN 0 THEN 0 WHEN 2 THEN 2 ELSE 1 END), due
-             LIMIT 500",
+            "SELECT id FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
+             AND type IN (1, 3) ORDER BY due",
         )
         .map_err(err)?;
-    let rows = stmt
-        .query_map(params![deck_id, today], |r| r.get(0))
+    let mut ids: Vec<i64> = stmt
+        .query_map([deck_id], |r| r.get(0))
+        .map_err(err)?
+        .collect::<rusqlite::Result<_>>()
         .map_err(err)?;
-    rows.collect::<rusqlite::Result<_>>().map_err(err)
+
+    // 2. New — random order prevents consecutive note-variant pairs
+    if new_limit > 0 {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
+                 AND type = 0 ORDER BY RANDOM() LIMIT ?2",
+            )
+            .map_err(err)?;
+        let new_ids: Vec<i64> = stmt
+            .query_map(params![deck_id, new_limit], |r| r.get(0))
+            .map_err(err)?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(err)?;
+        ids.extend(new_ids);
+    }
+
+    // 3. Reviews — random order within today's due set
+    if review_limit > 0 {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
+                 AND type = 2 AND due <= ?2 ORDER BY RANDOM() LIMIT ?3",
+            )
+            .map_err(err)?;
+        let review_ids: Vec<i64> = stmt
+            .query_map(params![deck_id, today, review_limit], |r| r.get(0))
+            .map_err(err)?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(err)?;
+        ids.extend(review_ids);
+    }
+
+    Ok(ids)
 }
 
-pub fn count_due(conn: &Connection, deck_id: i64, today: i32) -> CoreResult<u32> {
-    conn.query_row(
-        "SELECT COUNT(*) FROM cards
-         WHERE deck_id = ?1 AND queue NOT IN (-1, -2, -3)
-           AND (type = 0 OR type = 1 OR type = 3 OR (type = 2 AND due <= ?2))",
-        params![deck_id, today],
-        |r| r.get::<_, u32>(0),
-    )
-    .map_err(err)
+pub fn count_due(
+    conn: &Connection,
+    deck_id: i64,
+    today: i32,
+    new_limit: u32,
+    review_limit: u32,
+) -> CoreResult<u32> {
+    let learning: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
+             AND type IN (1, 3)",
+            [deck_id],
+            |r| r.get(0),
+        )
+        .map_err(err)?;
+    let new_total: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
+             AND type = 0",
+            [deck_id],
+            |r| r.get(0),
+        )
+        .map_err(err)?;
+    let review_total: u32 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
+             AND type = 2 AND due <= ?2",
+            params![deck_id, today],
+            |r| r.get(0),
+        )
+        .map_err(err)?;
+    Ok(learning + new_total.min(new_limit) + review_total.min(review_limit))
 }
 
 pub fn deck_due_counts(
@@ -374,7 +543,7 @@ mod tests {
         storage.import(&model()).unwrap();
 
         // The new card is queued for the Default deck (id 1).
-        let due = storage.due_card_ids(1, 0).unwrap();
+        let due = storage.due_card_ids(1, 0, 20, 200).unwrap();
         assert_eq!(due.len(), 1);
         let card_id = due[0];
 
@@ -415,7 +584,7 @@ mod tests {
         };
         storage.apply_answer(card_id, &next, 1, &log).unwrap();
 
-        assert!(storage.due_card_ids(1, 0).unwrap().is_empty());
+        assert!(storage.due_card_ids(1, 0, 20, 200).unwrap().is_empty());
         assert_eq!(
             storage.study_card(card_id).unwrap().unwrap().state.phase,
             CardPhase::Review

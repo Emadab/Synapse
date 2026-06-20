@@ -213,16 +213,57 @@ impl Storage for SqliteStorage {
         study::ensure_collection(&self.lock(), now_ms)
     }
 
-    fn due_card_ids(&self, deck_id: i64, today: i32) -> CoreResult<Vec<i64>> {
-        study::due_card_ids(&self.lock(), deck_id, today)
+    fn due_card_ids(
+        &self,
+        deck_id: i64,
+        today: i32,
+        new_limit: u32,
+        review_limit: u32,
+    ) -> CoreResult<Vec<i64>> {
+        study::due_card_ids(&self.lock(), deck_id, today, new_limit, review_limit)
     }
 
-    fn count_due(&self, deck_id: i64, today: i32) -> CoreResult<u32> {
-        study::count_due(&self.lock(), deck_id, today)
+    fn count_due(
+        &self,
+        deck_id: i64,
+        today: i32,
+        new_limit: u32,
+        review_limit: u32,
+    ) -> CoreResult<u32> {
+        study::count_due(&self.lock(), deck_id, today, new_limit, review_limit)
     }
 
     fn deck_due_counts(&self, today: i32) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
         study::deck_due_counts(&self.lock(), today)
+    }
+
+    fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)> {
+        study::deck_limits(&self.lock(), config_id)
+    }
+
+    fn all_deck_limits(&self) -> CoreResult<std::collections::HashMap<i64, (u32, u32)>> {
+        study::all_deck_limits(&self.lock())
+    }
+
+    fn today_studied(&self, deck_id: i64, today_start_ms: i64) -> CoreResult<(u32, u32)> {
+        study::today_studied(&self.lock(), deck_id, today_start_ms)
+    }
+
+    fn all_today_studied(
+        &self,
+        today_start_ms: i64,
+    ) -> CoreResult<std::collections::HashMap<i64, (u32, u32)>> {
+        study::all_today_studied(&self.lock(), today_start_ms)
+    }
+
+    fn set_deck_limits(
+        &self,
+        config_id: i64,
+        new_per_day: u32,
+        rev_per_day: u32,
+        now_ms: i64,
+    ) -> CoreResult<()> {
+        study::set_deck_limits(&self.lock(), config_id, new_per_day, rev_per_day, now_ms)
     }
 
     fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>> {

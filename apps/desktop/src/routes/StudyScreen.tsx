@@ -10,12 +10,23 @@ import { resolveCardMedia } from "@/lib/media";
 
 export function StudyScreen() {
   const tauri = isTauri();
-  const [deckId, setDeckId] = useState<number | null>(null);
+  const [session, setSession] = useState<{ deckId: number; sessionCap: number } | null>(null);
 
-  if (deckId === null) {
-    return <DeckPicker enabled={tauri} onPick={setDeckId} />;
+  if (session === null) {
+    return (
+      <DeckPicker
+        enabled={tauri}
+        onPick={(deckId, sessionCap) => setSession({ deckId, sessionCap })}
+      />
+    );
   }
-  return <Session deckId={deckId} onExit={() => setDeckId(null)} />;
+  return (
+    <Session
+      deckId={session.deckId}
+      sessionCap={session.sessionCap}
+      onExit={() => setSession(null)}
+    />
+  );
 }
 
 function CountBadge({ count, color }: { count: number; color: string }) {
@@ -27,8 +38,15 @@ function CountBadge({ count, color }: { count: number; color: string }) {
   );
 }
 
-function DeckPicker({ enabled, onPick }: { enabled: boolean; onPick: (id: number) => void }) {
+function DeckPicker({
+  enabled,
+  onPick,
+}: {
+  enabled: boolean;
+  onPick: (deckId: number, sessionCap: number) => void;
+}) {
   const decks = useQuery({ queryKey: queryKeys.decks, queryFn: ipc.listDecks, enabled });
+  const [sessionCap, setSessionCap] = useState(0);
 
   return (
     <div className="flex h-full flex-col">
@@ -41,43 +59,66 @@ function DeckPicker({ enabled, onPick }: { enabled: boolean; onPick: (id: number
             description="Study runs against the Rust core over Tauri. Launch with `pnpm dev`."
           />
         ) : (
-          <ul className="mx-auto flex max-w-md flex-col gap-2">
-            {(decks.data ?? []).map((deck) => (
-              <li key={deck.id}>
-                <button
-                  className="flex w-full items-center gap-3 rounded-lg border border-border px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-accent"
-                  onClick={() => onPick(deck.id)}
-                >
-                  <Layers className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="flex-1 truncate">{deck.name}</span>
-                  <span className="flex items-center gap-1">
-                    <CountBadge
-                      count={deck.new_count}
-                      color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                    />
-                    <CountBadge
-                      count={deck.learning_count}
-                      color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                    />
-                    <CountBadge
-                      count={deck.review_count}
-                      color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                    />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="mx-auto flex max-w-md flex-col gap-4">
+            <ul className="flex flex-col gap-2">
+              {(decks.data ?? []).map((deck) => (
+                <li key={deck.id}>
+                  <button
+                    className="flex w-full items-center gap-3 rounded-lg border border-border px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-accent"
+                    onClick={() => onPick(deck.id, sessionCap)}
+                  >
+                    <Layers className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 truncate">{deck.name}</span>
+                    <span className="flex items-center gap-1">
+                      <CountBadge
+                        count={deck.new_count}
+                        color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                      />
+                      <CountBadge
+                        count={deck.learning_count}
+                        color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                      />
+                      <CountBadge
+                        count={deck.review_count}
+                        color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                      />
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-4 py-2.5 text-sm">
+              <span className="text-muted-foreground">Study at most</span>
+              <input
+                type="number"
+                min={0}
+                max={9999}
+                value={sessionCap}
+                onChange={(e) => setSessionCap(Math.max(0, Number(e.target.value)))}
+                className="h-7 w-20 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <span className="text-muted-foreground">cards this session (0 = no limit)</span>
+            </div>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
+function Session({
+  deckId,
+  sessionCap,
+  onExit,
+}: {
+  deckId: number;
+  sessionCap: number;
+  onExit: () => void;
+}) {
   const tauri = isTauri();
   const queryClient = useQueryClient();
   const [revealed, setRevealed] = useState(false);
+  const [answeredCount, setAnsweredCount] = useState(0);
 
   const cardQuery = useQuery({
     queryKey: queryKeys.queue(String(deckId)),
@@ -88,17 +129,20 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
     mutationFn: ({ cardId, rating }: { cardId: number; rating: RatingValue }) =>
       ipc.answerCard(cardId, rating),
     onSuccess: (next) => {
+      setAnsweredCount((c) => c + 1);
       queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
       setRevealed(false);
     },
   });
+
+  const hitSessionCap = sessionCap > 0 && answeredCount >= sessionCap;
 
   const card = cardQuery.data ?? null;
 
   // Keyboard: Space/Enter reveals; 1–4 rate once revealed.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!card || answerMut.isPending) return;
+      if (!card || answerMut.isPending || hitSessionCap) return;
       if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         setRevealed(true);
@@ -111,7 +155,7 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [card, revealed, answerMut]);
+  }, [card, revealed, answerMut, hitSessionCap]);
 
   const questionHtml = card ? (tauri ? resolveCardMedia(card.question) : card.question) : "";
   const answerHtml = card ? (tauri ? resolveCardMedia(card.answer) : card.answer) : "";
@@ -133,7 +177,18 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
           </div>
         }
       />
-      {card ? (
+      {hitSessionCap ? (
+        <EmptyState
+          icon={Check}
+          title="Session complete"
+          description={`You've studied ${answeredCount} cards this session. Come back later to keep going.`}
+          action={
+            <Button variant="outline" onClick={onExit}>
+              Back to decks
+            </Button>
+          }
+        />
+      ) : card ? (
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-8">
           <div className="synapse-card flex-1 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto">
             <div
