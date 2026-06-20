@@ -9,6 +9,7 @@
 //! the traits declared in [`ports`]. Keeping this boundary clean is what lets
 //! the same engine power the desktop app today and a mobile/CLI app later.
 
+pub mod ai;
 pub mod collection;
 pub mod error;
 pub mod events;

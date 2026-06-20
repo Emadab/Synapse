@@ -41,7 +41,7 @@ export function SettingsScreen() {
         <section className="mt-8 max-w-xl space-y-1">
           <h2 className="text-sm font-medium">Scheduling</h2>
           <p className="text-sm text-muted-foreground">
-            SM-2 and FSRS will be selectable per deck. Wired up in milestone M3.
+            SM-2 and FSRS are both implemented and switchable per deck via deck options.
           </p>
         </section>
 

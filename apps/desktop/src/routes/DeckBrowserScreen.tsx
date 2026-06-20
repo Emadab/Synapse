@@ -161,7 +161,7 @@ export function DeckBrowserScreen() {
           <EmptyState
             icon={Layers}
             title="No decks yet"
-            description="Create a deck above, or import an .apkg / .colpkg (milestone M2)."
+            description="Create a deck above, or import an .apkg / .colpkg with the Import button."
           />
         ) : (
           <ul className="divide-y divide-border">
