@@ -207,13 +207,13 @@ pub fn due_card_ids(
     Ok(ids)
 }
 
-pub fn count_due(
+pub fn count_due_by_type(
     conn: &Connection,
     deck_id: i64,
     today: i32,
     new_limit: u32,
     review_limit: u32,
-) -> CoreResult<u32> {
+) -> CoreResult<(u32, u32, u32)> {
     let learning: u32 = conn
         .query_row(
             "SELECT COUNT(*) FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
@@ -238,7 +238,18 @@ pub fn count_due(
             |r| r.get(0),
         )
         .map_err(err)?;
-    Ok(learning + new_total.min(new_limit) + review_total.min(review_limit))
+    Ok((new_total.min(new_limit), learning, review_total.min(review_limit)))
+}
+
+pub fn count_due(
+    conn: &Connection,
+    deck_id: i64,
+    today: i32,
+    new_limit: u32,
+    review_limit: u32,
+) -> CoreResult<u32> {
+    let (n, l, r) = count_due_by_type(conn, deck_id, today, new_limit, review_limit)?;
+    Ok(n + l + r)
 }
 
 pub fn deck_due_counts(

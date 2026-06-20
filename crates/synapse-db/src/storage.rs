@@ -223,6 +223,16 @@ impl Storage for SqliteStorage {
         study::due_card_ids(&self.lock(), deck_id, today, new_limit, review_limit)
     }
 
+    fn count_due_by_type(
+        &self,
+        deck_id: i64,
+        today: i32,
+        new_limit: u32,
+        review_limit: u32,
+    ) -> CoreResult<(u32, u32, u32)> {
+        study::count_due_by_type(&self.lock(), deck_id, today, new_limit, review_limit)
+    }
+
     fn count_due(
         &self,
         deck_id: i64,

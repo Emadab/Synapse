@@ -86,7 +86,16 @@ pub trait Storage: Send + Sync {
         review_limit: u32,
     ) -> CoreResult<Vec<i64>>;
 
-    /// Count of studyable cards in `deck_id` on `today`, capped by limits.
+    /// Count of studyable cards by type `(new, learning, review)`, capped by limits.
+    fn count_due_by_type(
+        &self,
+        deck_id: i64,
+        today: i32,
+        new_limit: u32,
+        review_limit: u32,
+    ) -> CoreResult<(u32, u32, u32)>;
+
+    /// Total count of studyable cards in `deck_id` on `today`, capped by limits.
     fn count_due(
         &self,
         deck_id: i64,

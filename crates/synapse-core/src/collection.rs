@@ -95,6 +95,12 @@ impl Collection {
             .collect())
     }
 
+    /// Count of studyable cards by type `(new, learning, review)` (respects daily limits).
+    pub fn count_due_by_type(&self, deck_id: i64) -> CoreResult<(u32, u32, u32)> {
+        let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
+        self.storage.count_due_by_type(deck_id, self.today(), new_limit, review_limit)
+    }
+
     /// Count of studyable cards in `deck_id` right now (respects daily limits).
     pub fn count_due(&self, deck_id: i64) -> CoreResult<u32> {
         let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
@@ -396,6 +402,15 @@ mod tests {
             _review_limit: u32,
         ) -> CoreResult<Vec<i64>> {
             Ok(vec![])
+        }
+        fn count_due_by_type(
+            &self,
+            _deck_id: i64,
+            _today: i32,
+            _new_limit: u32,
+            _review_limit: u32,
+        ) -> CoreResult<(u32, u32, u32)> {
+            Ok((0, 0, 0))
         }
         fn count_due(
             &self,

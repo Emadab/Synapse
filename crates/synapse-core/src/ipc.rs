@@ -89,8 +89,12 @@ pub struct StudyCardDto {
     pub hard: String,
     pub good: String,
     pub easy: String,
-    /// Cards still due in this deck (including this one).
-    pub remaining: u32,
+    /// Remaining new cards due today (including this one if new).
+    pub new_count: u32,
+    /// Remaining learning/relearning cards due now.
+    pub learning_count: u32,
+    /// Remaining review cards due today.
+    pub review_count: u32,
 }
 
 /// A single note field (name + HTML value), in note order.

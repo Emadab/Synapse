@@ -166,9 +166,23 @@ function Session({
         title="Studying"
         actions={
           <div className="flex items-center gap-3">
-            {card && card.remaining > 0 && (
-              <span className="text-sm text-muted-foreground tabular-nums">
-                {card.remaining} remaining
+            {card && (
+              <span className="flex items-center gap-1.5 tabular-nums">
+                {card.new_count > 0 && (
+                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                    {card.new_count}
+                  </span>
+                )}
+                {card.learning_count > 0 && (
+                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                    {card.learning_count}
+                  </span>
+                )}
+                {card.review_count > 0 && (
+                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                    {card.review_count}
+                  </span>
+                )}
               </span>
             )}
             <Button variant="ghost" size="sm" onClick={onExit}>

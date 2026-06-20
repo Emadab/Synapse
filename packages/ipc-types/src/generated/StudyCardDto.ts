@@ -6,6 +6,14 @@
  */
 export type StudyCardDto = { card_id: number, deck_id: number, question: string, answer: string, again: string, hard: string, good: string, easy: string, 
 /**
- * Cards still due in this deck (including this one).
+ * Remaining new cards due today (including this one if new).
  */
-remaining: number, };
+new_count: number, 
+/**
+ * Remaining learning/relearning cards due now.
+ */
+learning_count: number, 
+/**
+ * Remaining review cards due today.
+ */
+review_count: number, };
