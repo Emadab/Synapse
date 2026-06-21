@@ -1,7 +1,5 @@
 //! Study commands. The shell is where the scheduling decision (synapse-scheduler)
 //! and HTML rendering (synapse-render) meet the core's queue + persistence.
-//! M4 uses the default SM-2 config for every deck; per-deck config (and FSRS
-//! selection) is read from deck options in a later milestone.
 
 use synapse_core::ipc::{IpcError, IpcErrorKind, StudyCardDto};
 use synapse_core::scheduling::{CardPhase, Interval, SchedContext};
@@ -17,8 +15,6 @@ pub fn get_next_card(
     collection: State<'_, Collection>,
     deck_id: i64,
 ) -> IpcResult<Option<StudyCardDto>> {
-    // Unbury buried cards at session start so siblings from the previous
-    // session are released (manual buried stay buried until tomorrow).
     collection.start_study_session(deck_id)?;
     match collection.next_card(deck_id)? {
         Some(card) => Ok(Some(present(&collection, card))),
@@ -47,7 +43,10 @@ pub fn answer_card(
 
     let now = collection.now_ms();
     let due = match outcome.interval {
-        Interval::Days(days) => i64::from(today) + i64::from(days),
+        Interval::Days(days) => {
+            let fuzzed = fuzz_days(days, card_id);
+            i64::from(today) + i64::from(fuzzed)
+        }
         Interval::Minutes(minutes) => now + i64::from(minutes) * 60_000,
     };
     let review_kind = match card.state.phase {
@@ -87,7 +86,6 @@ fn rating_from(value: u8) -> IpcResult<Rating> {
     }
 }
 
-/// Render a card and compute its four button labels for the UI.
 fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
     let rendered = render(&RenderRequest {
         template: Template {
@@ -100,7 +98,8 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
     });
 
     let config = collection.get_sched_config(card.deck_id).unwrap_or_default();
-    let scheduler = scheduler_for(config.algorithm);
+    let algorithm = config.algorithm;
+    let scheduler = scheduler_for(algorithm);
     let ctx = SchedContext {
         today: collection.today(),
         config,
@@ -108,6 +107,14 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
     let previews = scheduler.preview(&card.state, &ctx);
     let (new_count, learning_count, review_count) =
         collection.count_due_by_type(card.deck_id).unwrap_or((0, 0, 0));
+
+    let card_phase = match card.state.phase {
+        CardPhase::New => "new",
+        CardPhase::Learning => "learning",
+        CardPhase::Review => "review",
+        CardPhase::Relearning => "relearning",
+    }
+    .to_string();
 
     StudyCardDto {
         card_id: card.id,
@@ -121,16 +128,57 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
         new_count,
         learning_count,
         review_count,
+        card_phase,
+        algorithm,
     }
 }
 
-/// Human-readable interval label, Anki-style.
+/// Anki-style interval fuzz: ± a small random range seeded by card_id so that
+/// cards due on the same day don't all come back at exactly the same time.
+/// The state's `interval_days` is stored unfuzzed; fuzz is applied only to `due`.
+fn fuzz_days(days: u32, card_id: i64) -> u32 {
+    if days < 2 {
+        return days;
+    }
+    // LCG-based deterministic fuzz seeded by card_id + days.
+    let seed = (card_id.unsigned_abs()).wrapping_mul(1_664_525)
+        .wrapping_add(days as u64)
+        .wrapping_add(1_013_904_223);
+    let rng = ((seed >> 16) & 0xffff) as f64 / 65535.0; // [0, 1)
+
+    let delta = if days < 7 {
+        ((days as f64 * 0.25).round() as u32).max(1)
+    } else if days < 30 {
+        ((days as f64 * 0.15).round() as u32).max(2)
+    } else {
+        ((days as f64 * 0.05).round() as u32).max(4)
+    };
+
+    let fuzz = (rng * (2 * delta + 1) as f64) as u32;
+    days.saturating_sub(delta) + fuzz
+}
+
 fn label(interval: Interval) -> String {
     match interval {
+        Interval::Minutes(0) => "< 1m".into(),
         Interval::Minutes(m) if m < 60 => format!("{m}m"),
         Interval::Minutes(m) => format!("{}h", m / 60),
         Interval::Days(d) if d < 30 => format!("{d}d"),
-        Interval::Days(d) if d < 365 => format!("{:.1}mo", d as f64 / 30.0),
-        Interval::Days(d) => format!("{:.1}y", d as f64 / 365.0),
+        Interval::Days(d) if d < 365 => {
+            let months = d as f64 / 30.0;
+            if (months.round() - months).abs() < 0.05 {
+                format!("{}mo", months.round() as u32)
+            } else {
+                format!("{months:.1}mo")
+            }
+        }
+        Interval::Days(d) => {
+            let years = d as f64 / 365.0;
+            if (years.round() - years).abs() < 0.05 {
+                format!("{}y", years.round() as u32)
+            } else {
+                format!("{years:.1}y")
+            }
+        }
     }
 }

@@ -9,6 +9,7 @@
 //! Interval fuzz is applied by the caller at apply time (seeded by card id) so
 //! that previews and these tests stay deterministic.
 
+mod common;
 mod fsrs;
 pub mod optimizer;
 mod sm2;

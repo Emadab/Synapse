@@ -105,15 +105,20 @@ pub struct SchedConfig {
     pub minimum_interval_days: u32,
     pub maximum_interval_days: u32,
     pub leech_threshold: u32,
-    pub fsrs_weights: [f64; 19],
+    pub fsrs_weights: [f64; 21],
     pub desired_retention: f64,
 }
 
-/// Published FSRS-5 default weights.
-pub const FSRS5_DEFAULT_WEIGHTS: [f64; 19] = [
-    0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192, 1.01925,
-    1.9395, 0.11, 0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621,
+/// Published FSRS-6 default weights (21 parameters).
+/// w[20] is the trainable decay magnitude; DECAY = -w[20].
+pub const FSRS6_DEFAULT_WEIGHTS: [f64; 21] = [
+    0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001, 1.8722, 0.1666, 0.796, 1.4835,
+    0.0614, 0.2629, 1.6483, 0.6014, 1.8729, 0.5425, 0.0912, 0.0658, 0.1542,
 ];
+
+/// Kept for back-compat (weight-padding in existing decks).
+#[allow(dead_code)]
+pub const FSRS5_DEFAULT_WEIGHTS: [f64; 21] = FSRS6_DEFAULT_WEIGHTS;
 
 impl Default for SchedConfig {
     fn default() -> Self {
@@ -133,7 +138,7 @@ impl Default for SchedConfig {
             minimum_interval_days: 1,
             maximum_interval_days: 36_500,
             leech_threshold: 8,
-            fsrs_weights: FSRS5_DEFAULT_WEIGHTS,
+            fsrs_weights: FSRS6_DEFAULT_WEIGHTS,
             desired_retention: 0.9,
         }
     }

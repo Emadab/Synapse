@@ -247,15 +247,15 @@ impl Collection {
         if cfg.maximum_interval_days < 1 {
             return Err(CoreError::Invalid("max interval must be ≥ 1".into()));
         }
-        if cfg.fsrs_weights.len() != 19 {
-            return Err(CoreError::Invalid("FSRS weights must have exactly 19 elements".into()));
+        if cfg.fsrs_weights.len() != 21 {
+            return Err(CoreError::Invalid("FSRS weights must have exactly 21 elements".into()));
         }
         let deck = self
             .storage
             .deck_by_id(cfg.deck_id)?
             .ok_or_else(|| CoreError::NotFound(format!("deck {}", cfg.deck_id)))?;
-        let mut arr = [0.0f64; 19];
-        for (i, &w) in cfg.fsrs_weights.iter().enumerate().take(19) {
+        let mut arr = crate::scheduling::FSRS6_DEFAULT_WEIGHTS;
+        for (i, &w) in cfg.fsrs_weights.iter().enumerate().take(21) {
             arr[i] = w;
         }
         let sched = crate::scheduling::SchedConfig {
@@ -409,7 +409,9 @@ impl Collection {
         self.storage.bury_siblings(note_id, card_id)?;
         // Leech detection.
         let now_ms = self.clock.now_ms();
-        let is_leech = next.lapses > 0 && next.lapses >= leech_threshold;
+        let is_leech = leech_threshold > 0
+            && next.lapses > 0
+            && next.lapses % leech_threshold == 0;
         if is_leech {
             self.storage.add_note_tag(note_id, "leech", now_ms)?;
             self.storage.suspend_cards(&[card_id])?;

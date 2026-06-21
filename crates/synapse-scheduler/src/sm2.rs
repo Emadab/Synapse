@@ -6,8 +6,9 @@
 //! Hard −150 ease ×1.2; Good ×ease; Easy +150 ease ×ease×bonus). Ease floors at
 //! 1300. Interval fuzz is applied later, at apply time.
 
+use crate::common::{clamp_interval, step_action, StepAction};
 use synapse_core::scheduling::{
-    AnswerOutcome, CardPhase, CardState, Interval, SchedConfig, SchedContext, Scheduler,
+    AnswerOutcome, CardPhase, CardState, Interval, SchedContext, Scheduler,
 };
 use synapse_core::{Algorithm, Rating};
 
@@ -35,13 +36,6 @@ impl Scheduler for Sm2Scheduler {
     }
 }
 
-fn clamp_interval(days: f64, cfg: &SchedConfig) -> u32 {
-    days.round().clamp(
-        cfg.minimum_interval_days as f64,
-        cfg.maximum_interval_days as f64,
-    ) as u32
-}
-
 fn graduated(state: &CardState, interval_days: u32, ctx: &SchedContext) -> AnswerOutcome {
     AnswerOutcome {
         next: CardState {
@@ -56,7 +50,6 @@ fn graduated(state: &CardState, interval_days: u32, ctx: &SchedContext) -> Answe
     }
 }
 
-/// (Re)learning-step transition over `steps` (minutes).
 fn learning(
     state: &CardState,
     rating: Rating,
@@ -65,81 +58,28 @@ fn learning(
     is_relearn: bool,
 ) -> AnswerOutcome {
     let cfg = &ctx.config;
-    let total = steps.len() as u32;
-    let phase = if is_relearn {
-        CardPhase::Relearning
-    } else {
-        CardPhase::Learning
-    };
+    let phase = if is_relearn { CardPhase::Relearning } else { CardPhase::Learning };
 
-    // Interval applied when a (re)learning card graduates back to Review.
-    let graduate_interval = |rating: Rating| -> u32 {
+    let graduate_interval = |r: Rating| -> u32 {
         if is_relearn {
             state.interval_days.max(cfg.minimum_interval_days)
-        } else if rating == Rating::Easy {
+        } else if r == Rating::Easy {
             cfg.easy_interval_days
         } else {
             cfg.graduating_interval_days
         }
     };
 
-    // No steps configured: graduate immediately (except Again, which still
-    // shows the minimum step of 1 minute).
-    if total == 0 {
-        return match rating {
-            Rating::Again => again_in_learning(state, phase, 1),
-            _ => graduated(state, graduate_interval(rating), ctx),
-        };
-    }
-
-    // Remaining steps; a New card hasn't started, so all steps remain.
-    let remaining = if state.phase == CardPhase::New {
-        total
-    } else {
-        state.steps_remaining.min(total)
-    };
-
-    match rating {
-        Rating::Again => again_in_learning(state, phase, steps[0]),
-        Rating::Hard => {
-            let idx = (total - remaining).min(total - 1) as usize;
-            AnswerOutcome {
-                next: CardState {
-                    phase,
-                    steps_remaining: remaining.max(1),
-                    ..*state
-                },
-                interval: Interval::Minutes(steps[idx]),
-            }
-        }
-        Rating::Good => {
-            let next_remaining = remaining.saturating_sub(1);
-            if next_remaining == 0 {
-                graduated(state, graduate_interval(Rating::Good), ctx)
-            } else {
-                let idx = (total - next_remaining) as usize;
-                AnswerOutcome {
-                    next: CardState {
-                        phase,
-                        steps_remaining: next_remaining,
-                        ..*state
-                    },
-                    interval: Interval::Minutes(steps[idx]),
-                }
-            }
-        }
-        Rating::Easy => graduated(state, graduate_interval(Rating::Easy), ctx),
-    }
-}
-
-fn again_in_learning(state: &CardState, phase: CardPhase, first_step_min: u32) -> AnswerOutcome {
-    AnswerOutcome {
-        next: CardState {
-            phase,
-            steps_remaining: state.steps_remaining.max(1),
-            ..*state
+    match step_action(state, rating, steps) {
+        StepAction::Restart { minutes, total } => AnswerOutcome {
+            next: CardState { phase, steps_remaining: total, ..*state },
+            interval: Interval::Minutes(minutes),
         },
-        interval: Interval::Minutes(first_step_min),
+        StepAction::Continue { steps_remaining, minutes } => AnswerOutcome {
+            next: CardState { phase, steps_remaining, ..*state },
+            interval: Interval::Minutes(minutes),
+        },
+        StepAction::Graduate { rating: r } => graduated(state, graduate_interval(r), ctx),
     }
 }
 
@@ -151,7 +91,6 @@ fn review(state: &CardState, rating: Rating, ctx: &SchedContext) -> AnswerOutcom
 
     match rating {
         Rating::Again => {
-            // Lapse: reduce ease, shrink interval, enter relearning.
             let new_ease = state
                 .ease_milli
                 .saturating_sub(LAPSE_EASE_PENALTY_MILLI)
@@ -182,17 +121,23 @@ fn review(state: &CardState, rating: Rating, ctx: &SchedContext) -> AnswerOutcom
                 .ease_milli
                 .saturating_sub(EASE_STEP_MILLI)
                 .max(MIN_EASE_MILLI);
-            let days = clamp_interval(ivl * cfg.hard_interval_factor * modifier, cfg);
+            let days = clamp_interval(ivl * cfg.hard_interval_factor * modifier, cfg)
+                .max(state.interval_days + 1);
             review_outcome(state, ctx, days, new_ease)
         }
         Rating::Good => {
-            let days = clamp_interval(ivl * ease * modifier, cfg).max(state.interval_days + 1);
+            let hard_days = clamp_interval(ivl * cfg.hard_interval_factor * modifier, cfg)
+                .max(state.interval_days + 1);
+            let days = clamp_interval(ivl * ease * modifier, cfg).max(hard_days + 1);
             review_outcome(state, ctx, days, state.ease_milli)
         }
         Rating::Easy => {
             let new_ease = state.ease_milli + EASE_STEP_MILLI;
-            let days = clamp_interval(ivl * ease * cfg.easy_bonus * modifier, cfg)
+            let hard_days = clamp_interval(ivl * cfg.hard_interval_factor * modifier, cfg)
                 .max(state.interval_days + 1);
+            let good_days = clamp_interval(ivl * ease * modifier, cfg).max(hard_days + 1);
+            let days = clamp_interval(ivl * ease * cfg.easy_bonus * modifier, cfg)
+                .max(good_days + 1);
             review_outcome(state, ctx, days, new_ease)
         }
     }
@@ -220,6 +165,7 @@ fn review_outcome(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use synapse_core::scheduling::{Interval, SchedConfig, SchedContext};
 
     fn ctx() -> SchedContext {
         SchedContext {
@@ -246,15 +192,26 @@ mod tests {
     fn good_walks_steps_then_graduates() {
         let s = Sm2Scheduler;
         let c = ctx();
-        // New --Good--> learning step 2 (10m)
         let o1 = s.answer(&new_card(), Rating::Good, &c);
         assert_eq!(o1.interval, Interval::Minutes(10));
         assert_eq!(o1.next.phase, CardPhase::Learning);
-        // --Good--> graduate to 1 day, Review
         let o2 = s.answer(&o1.next, Rating::Good, &c);
         assert_eq!(o2.interval, Interval::Days(1));
         assert_eq!(o2.next.phase, CardPhase::Review);
         assert_eq!(o2.next.reps, 1);
+    }
+
+    #[test]
+    fn again_resets_all_steps() {
+        let s = Sm2Scheduler;
+        let c = ctx();
+        // Good → step 2 (steps_remaining=1)
+        let mid = s.answer(&new_card(), Rating::Good, &c).next;
+        assert_eq!(mid.steps_remaining, 1);
+        // Again → restart all 2 steps
+        let reset = s.answer(&mid, Rating::Again, &c).next;
+        assert_eq!(reset.steps_remaining, 2);
+        assert_eq!(reset.phase, CardPhase::Learning);
     }
 
     #[test]
@@ -270,11 +227,35 @@ mod tests {
         };
         let o = s.answer(&card, Rating::Good, &c);
         assert_eq!(o.interval, Interval::Days(25)); // 10 * 2.5
-                                                    // Easy > Good > Hard
         let easy = s.answer(&card, Rating::Easy, &c).interval;
         let hard = s.answer(&card, Rating::Hard, &c).interval;
         assert!(matches!(easy, Interval::Days(d) if d > 25));
         assert!(matches!(hard, Interval::Days(d) if d < 25));
+    }
+
+    #[test]
+    fn review_ordering_hard_lt_good_lt_easy() {
+        let s = Sm2Scheduler;
+        // Use low ease (1.3) and high hard_interval_factor to stress ordering.
+        let mut cfg = SchedConfig::default();
+        cfg.hard_interval_factor = 1.2;
+        cfg.interval_modifier = 1.0;
+        let c = SchedContext { today: 0, config: cfg };
+        let card = CardState {
+            phase: CardPhase::Review,
+            interval_days: 5,
+            ease_milli: 1300,
+            reps: 2,
+            ..new_card()
+        };
+        let hard = s.answer(&card, Rating::Hard, &c).interval;
+        let good = s.answer(&card, Rating::Good, &c).interval;
+        let easy = s.answer(&card, Rating::Easy, &c).interval;
+        let h = match hard { Interval::Days(d) => d, _ => panic!() };
+        let g = match good { Interval::Days(d) => d, _ => panic!() };
+        let e = match easy { Interval::Days(d) => d, _ => panic!() };
+        assert!(h < g, "hard={h} must < good={g}");
+        assert!(g < e, "good={g} must < easy={e}");
     }
 
     #[test]
@@ -292,8 +273,8 @@ mod tests {
         let o = s.answer(&card, Rating::Again, &c);
         assert_eq!(o.next.phase, CardPhase::Relearning);
         assert_eq!(o.next.lapses, 1);
-        assert_eq!(o.next.ease_milli, 2300); // 2500 - 200
-        assert_eq!(o.interval, Interval::Minutes(10)); // first relearning step
+        assert_eq!(o.next.ease_milli, 2300);
+        assert_eq!(o.interval, Interval::Minutes(10));
     }
 
     #[test]

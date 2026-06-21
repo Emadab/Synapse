@@ -143,6 +143,10 @@ pub struct StudyCardDto {
     pub learning_count: u32,
     /// Remaining review cards due today.
     pub review_count: u32,
+    /// "new" | "learning" | "review" | "relearning"
+    pub card_phase: String,
+    /// Deck's active scheduling algorithm.
+    pub algorithm: Algorithm,
 }
 
 /// A single note field (name + HTML value), in note order.

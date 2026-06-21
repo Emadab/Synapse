@@ -1,15 +1,14 @@
-//! FSRS-5 weight optimizer.
+//! FSRS-6 weight optimizer.
 //!
-//! Fits the 19 FSRS-5 weights to a user's review history using Adam gradient
+//! Fits the 21 FSRS-6 weights to a user's review history using Adam gradient
 //! descent with numerical (central-difference) gradients. No external ML crates
 //! required — the objective is a scalar log-loss computed by replaying the FSRS
 //! forward simulation.
 //!
 //! # Algorithm
 //! 1. Group revlog entries by card, sort by timestamp.
-//! 2. Build a `Vec<Vec<Review>>` — one inner vec per card, each entry holding
-//!    (elapsed_days_since_previous_review, rating 1-4).
-//! 3. Evaluate cross-entropy loss by simulating FSRS forward for each sequence.
+//! 2. Build a `Vec<Vec<Review>>` — one inner vec per card.
+//! 3. Evaluate cross-entropy loss via forward FSRS-6 simulation.
 //! 4. Compute numerical gradient (central differences, h = 1e-5).
 //! 5. Update weights via Adam (lr = 0.01, β₁ = 0.9, β₂ = 0.999).
 //! 6. Clamp weights to per-index safe bounds after each step.
@@ -19,34 +18,25 @@
 
 use synapse_core::model::Revlog;
 
-const DECAY: f64 = -0.5;
-const FACTOR: f64 = 19.0 / 81.0;
-
 /// Minimum reviews to attempt optimization.
 pub const MIN_REVIEWS: usize = 400;
 
 /// Result of a completed optimization run.
 #[derive(Debug, Clone)]
 pub struct OptimizeResult {
-    pub weights: [f64; 19],
+    pub weights: [f64; 21],
     pub log_loss_before: f64,
     pub log_loss_after: f64,
-    /// Number of (card, review) pairs used in training.
     pub review_count: usize,
-    /// Number of card sequences.
     pub card_count: usize,
 }
 
-/// One review in a sequence.
 #[derive(Debug, Clone, Copy)]
 struct Review {
     elapsed_days: f64,
     rating: i64, // 1..=4
 }
 
-/// Build per-card review sequences from a flat revlog.
-/// Filters to review_kind in {0, 1, 2} (learn / review / relearn).
-/// Sequences with fewer than 2 reviews are dropped (nothing to predict).
 fn build_sequences(revlogs: &[Revlog]) -> Vec<Vec<Review>> {
     use std::collections::HashMap;
     let mut by_card: HashMap<i64, Vec<&Revlog>> = HashMap::new();
@@ -76,35 +66,51 @@ fn build_sequences(revlogs: &[Revlog]) -> Vec<Vec<Review>> {
 }
 
 // ---------------------------------------------------------------------------
-// FSRS forward simulation (parameterised by `w`)
+// FSRS-6 forward simulation
 // ---------------------------------------------------------------------------
 
-fn initial_stability(w: &[f64; 19], g: i64) -> f64 {
+fn fsrs6_decay(w: &[f64; 21]) -> f64 {
+    -(w[20].max(0.01))
+}
+
+fn fsrs6_factor(w: &[f64; 21]) -> f64 {
+    0.9_f64.powf(1.0 / fsrs6_decay(w)) - 1.0
+}
+
+fn initial_stability(w: &[f64; 21], g: i64) -> f64 {
     w[(g - 1) as usize].max(0.1)
 }
 
-fn initial_difficulty(w: &[f64; 19], g: i64) -> f64 {
+fn initial_difficulty(w: &[f64; 21], g: i64) -> f64 {
     (w[4] - (w[5] * (g - 1) as f64).exp() + 1.0).clamp(1.0, 10.0)
 }
 
-fn difficulty_easy_anchor(w: &[f64; 19]) -> f64 {
+fn difficulty_easy_anchor(w: &[f64; 21]) -> f64 {
     initial_difficulty(w, 4)
 }
 
-fn next_difficulty(w: &[f64; 19], d: f64, g: i64) -> f64 {
+fn next_difficulty(w: &[f64; 21], d: f64, g: i64) -> f64 {
     let delta = -w[6] * (g - 3) as f64;
     let damped = d + delta * (10.0 - d) / 9.0;
     (w[7] * difficulty_easy_anchor(w) + (1.0 - w[7]) * damped).clamp(1.0, 10.0)
 }
 
-fn retrievability(elapsed: f64, stability: f64) -> f64 {
-    (1.0 + FACTOR * elapsed / stability.max(0.1)).powf(DECAY)
+fn retrievability(elapsed: f64, stability: f64, w: &[f64; 21]) -> f64 {
+    let decay = fsrs6_decay(w);
+    let factor = fsrs6_factor(w);
+    (1.0 + factor * elapsed / stability.max(0.1)).powf(decay)
 }
 
-fn success_stability(w: &[f64; 19], d: f64, s: f64, r: f64, g: i64) -> f64 {
+fn short_term_stability(w: &[f64; 21], s: f64, g: i64) -> f64 {
+    let sinc = (w[17] * (g as f64 - 3.0 + w[18])).exp() * s.powf(-w[19]);
+    let factor = if g >= 2 { sinc.max(1.0) } else { sinc };
+    (s * factor).max(0.1)
+}
+
+fn success_stability(w: &[f64; 21], d: f64, s: f64, r: f64, g: i64) -> f64 {
     let hard_penalty = if g == 2 { w[15] } else { 1.0 };
     let easy_bonus = if g == 4 { w[16] } else { 1.0 };
-    let growth = (w[8].exp())
+    let growth = w[8].exp()
         * (11.0 - d)
         * s.powf(-w[9])
         * ((w[10] * (1.0 - r)).exp() - 1.0)
@@ -113,17 +119,18 @@ fn success_stability(w: &[f64; 19], d: f64, s: f64, r: f64, g: i64) -> f64 {
     (s * (1.0 + growth)).max(0.1)
 }
 
-fn forget_stability(w: &[f64; 19], d: f64, s: f64, r: f64) -> f64 {
-    let sf = w[11] * d.powf(-w[12]) * ((s + 1.0).powf(w[13]) - 1.0) * (w[14] * (1.0 - r)).exp();
-    sf.clamp(0.1, s)
+fn forget_stability(w: &[f64; 21], d: f64, s: f64, r: f64) -> f64 {
+    let s_forget =
+        w[11] * d.powf(-w[12]) * ((s + 1.0).powf(w[13]) - 1.0) * (w[14] * (1.0 - r)).exp();
+    let s_min = s / (w[17] * w[18]).exp();
+    s_forget.max(s_min).clamp(0.1, s)
 }
 
 // ---------------------------------------------------------------------------
 // Loss function
 // ---------------------------------------------------------------------------
 
-/// Binary cross-entropy loss averaged over all (card, review) prediction pairs.
-fn compute_loss(w: &[f64; 19], sequences: &[Vec<Review>]) -> f64 {
+fn compute_loss(w: &[f64; 21], sequences: &[Vec<Review>]) -> f64 {
     const EPS: f64 = 1e-9;
     let mut total_loss = 0.0f64;
     let mut count = 0usize;
@@ -136,13 +143,23 @@ fn compute_loss(w: &[f64; 19], sequences: &[Vec<Review>]) -> f64 {
 
         for review in &seq[1..] {
             let g = review.rating;
-            let r = retrievability(review.elapsed_days, s);
+            let elapsed = review.elapsed_days;
+
+            let r = if elapsed == 0.0 {
+                // Predict retrievability as if at the scheduled boundary.
+                retrievability(s, s, w)
+            } else {
+                retrievability(elapsed, s, w)
+            };
+
             let y = if g >= 2 { 1.0f64 } else { 0.0f64 };
             total_loss -= y * r.clamp(EPS, 1.0 - EPS).ln()
                 + (1.0 - y) * (1.0 - r).clamp(EPS, 1.0 - EPS).ln();
             count += 1;
 
-            let new_s = if g == 1 {
+            let new_s = if elapsed == 0.0 {
+                short_term_stability(w, s, g)
+            } else if g == 1 {
                 forget_stability(w, d, s, r)
             } else {
                 success_stability(w, d, s, r, g)
@@ -157,15 +174,15 @@ fn compute_loss(w: &[f64; 19], sequences: &[Vec<Review>]) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// Numerical gradient (central differences)
+// Numerical gradient
 // ---------------------------------------------------------------------------
 
-fn compute_gradient(w: &[f64; 19], sequences: &[Vec<Review>]) -> [f64; 19] {
+fn compute_gradient(w: &[f64; 21], sequences: &[Vec<Review>]) -> [f64; 21] {
     const H: f64 = 1e-5;
-    let mut grad = [0.0f64; 19];
+    let mut grad = [0.0f64; 21];
     let mut wm = *w;
     let mut wp = *w;
-    for i in 0..19 {
+    for i in 0..21 {
         wm[i] = w[i] - H;
         wp[i] = w[i] + H;
         grad[i] = (compute_loss(&wp, sequences) - compute_loss(&wm, sequences)) / (2.0 * H);
@@ -176,10 +193,10 @@ fn compute_gradient(w: &[f64; 19], sequences: &[Vec<Review>]) -> [f64; 19] {
 }
 
 // ---------------------------------------------------------------------------
-// Weight bounds (clamp after each Adam step)
+// Weight bounds
 // ---------------------------------------------------------------------------
 
-const BOUNDS: [(f64, f64); 19] = [
+const BOUNDS: [(f64, f64); 21] = [
     (0.1, 40.0),   // w0  initial stability Again
     (0.1, 40.0),   // w1  initial stability Hard
     (0.1, 40.0),   // w2  initial stability Good
@@ -188,20 +205,22 @@ const BOUNDS: [(f64, f64); 19] = [
     (0.01, 5.0),   // w5  difficulty exp scale
     (0.01, 5.0),   // w6  difficulty delta
     (0.0, 1.0),    // w7  mean-reversion factor
-    (0.0, 5.0),    // w8  stability growth (exponentiated)
-    (0.0, 3.0),    // w9  stability decay
-    (0.01, 5.0),   // w10 success R coeff
+    (0.0, 5.0),    // w8  stability growth (exp)
+    (0.0, 3.0),    // w9  stability decay exponent
+    (0.01, 5.0),   // w10 success R coefficient
     (0.01, 5.0),   // w11 lapse stability base
     (0.01, 3.0),   // w12 lapse D exponent
     (0.01, 3.0),   // w13 lapse S+1 exponent
-    (0.01, 5.0),   // w14 lapse R coeff
+    (0.01, 5.0),   // w14 lapse R coefficient
     (0.01, 1.5),   // w15 hard penalty
     (1.0, 5.0),    // w16 easy bonus
-    (0.01, 5.0),   // w17 (unused in current formula; kept in array)
-    (0.01, 5.0),   // w18 (unused in current formula; kept in array)
+    (0.01, 5.0),   // w17 short-term coefficient
+    (-1.0, 1.5),   // w18 short-term offset
+    (0.0, 3.0),    // w19 short-term exponent
+    (0.05, 0.8),   // w20 decay magnitude (DECAY = -w20)
 ];
 
-fn clamp_weights(w: &mut [f64; 19]) {
+fn clamp_weights(w: &mut [f64; 21]) {
     for (i, wi) in w.iter_mut().enumerate() {
         let (lo, hi) = BOUNDS[i];
         *wi = wi.clamp(lo, hi);
@@ -213,10 +232,10 @@ fn clamp_weights(w: &mut [f64; 19]) {
 // ---------------------------------------------------------------------------
 
 fn adam_step(
-    w: &mut [f64; 19],
-    m: &mut [f64; 19],
-    v: &mut [f64; 19],
-    grad: &[f64; 19],
+    w: &mut [f64; 21],
+    m: &mut [f64; 21],
+    v: &mut [f64; 21],
+    grad: &[f64; 21],
     t: u32,
 ) {
     const LR: f64 = 0.01;
@@ -227,7 +246,7 @@ fn adam_step(
     let b1t = B1.powi(t as i32);
     let b2t = B2.powi(t as i32);
 
-    for i in 0..19 {
+    for i in 0..21 {
         m[i] = B1 * m[i] + (1.0 - B1) * grad[i];
         v[i] = B2 * v[i] + (1.0 - B2) * grad[i] * grad[i];
         let m_hat = m[i] / (1.0 - b1t);
@@ -241,13 +260,10 @@ fn adam_step(
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Fit FSRS-5 weights from review history.
-///
-/// `initial_weights` is the starting point (typically the current deck weights
-/// or the FSRS-5 defaults). Returns an error if the history is too short.
+/// Fit FSRS-6 weights from review history.
 pub fn optimize(
     revlogs: &[Revlog],
-    initial_weights: &[f64; 19],
+    initial_weights: &[f64; 21],
 ) -> Result<OptimizeResult, String> {
     let sequences = build_sequences(revlogs);
     let review_count: usize = sequences.iter().map(|s| s.len()).sum();
@@ -262,8 +278,8 @@ pub fn optimize(
     let loss_before = compute_loss(initial_weights, &sequences);
 
     let mut w = *initial_weights;
-    let mut m = [0.0f64; 19];
-    let mut v = [0.0f64; 19];
+    let mut m = [0.0f64; 21];
+    let mut v = [0.0f64; 21];
 
     for t in 1u32..=200 {
         let grad = compute_gradient(&w, &sequences);
@@ -288,16 +304,15 @@ pub fn optimize(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use synapse_core::scheduling::FSRS5_DEFAULT_WEIGHTS;
+    use synapse_core::scheduling::FSRS6_DEFAULT_WEIGHTS;
 
     fn synthetic_revlog() -> Vec<Revlog> {
-        // Simulate 50 cards, each with 10 reviews, alternating Good/Easy.
         let mut logs = Vec::new();
-        let mut ts = 1_700_000_000_000i64; // base timestamp ms
+        let mut ts = 1_700_000_000_000i64;
         for card_id in 1..=50i64 {
             let mut prev_ts = ts;
             for review in 0..10u32 {
-                let rating = if review % 5 == 0 { 1 } else { 3 }; // mix in some Again
+                let rating = if review % 5 == 0 { 1 } else { 3 };
                 let id = prev_ts + 86_400_000 * (review as i64 + 1);
                 logs.push(Revlog {
                     id,
@@ -312,7 +327,7 @@ mod tests {
                 });
                 prev_ts = id;
             }
-            ts += 10; // offset each card slightly
+            ts += 10;
         }
         logs
     }
@@ -320,8 +335,7 @@ mod tests {
     #[test]
     fn optimizer_converges_below_initial_loss() {
         let logs = synthetic_revlog();
-        // Need at least MIN_REVIEWS = 400 reviews; 50*10 = 500 ✓
-        let result = optimize(&logs, &FSRS5_DEFAULT_WEIGHTS).expect("optimize failed");
+        let result = optimize(&logs, &FSRS6_DEFAULT_WEIGHTS).expect("optimize failed");
         assert!(
             result.log_loss_after <= result.log_loss_before,
             "loss did not decrease: before={:.4} after={:.4}",
@@ -334,7 +348,6 @@ mod tests {
 
     #[test]
     fn optimizer_rejects_short_history() {
-        // Only 10 reviews — below threshold.
         let logs: Vec<Revlog> = (0..10)
             .map(|i| Revlog {
                 id: 1_700_000_000_000 + i * 86_400_000,
@@ -348,7 +361,7 @@ mod tests {
                 review_kind: 1,
             })
             .collect();
-        let result = optimize(&logs, &FSRS5_DEFAULT_WEIGHTS);
+        let result = optimize(&logs, &FSRS6_DEFAULT_WEIGHTS);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("insufficient"));
     }
@@ -356,7 +369,7 @@ mod tests {
     #[test]
     fn weights_stay_within_bounds_after_optimize() {
         let logs = synthetic_revlog();
-        let result = optimize(&logs, &FSRS5_DEFAULT_WEIGHTS).unwrap();
+        let result = optimize(&logs, &FSRS6_DEFAULT_WEIGHTS).unwrap();
         for (i, (&w, &(lo, hi))) in result.weights.iter().zip(BOUNDS.iter()).enumerate() {
             assert!(
                 w >= lo && w <= hi,

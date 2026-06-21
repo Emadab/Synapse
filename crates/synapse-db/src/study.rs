@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use synapse_core::error::{CoreError, CoreResult};
 use synapse_core::model::{Algorithm, CardRender, Revlog, StudyCard};
-use synapse_core::scheduling::{CardPhase, CardState, SchedConfig, FSRS5_DEFAULT_WEIGHTS};
+use synapse_core::scheduling::{CardPhase, CardState, SchedConfig, FSRS6_DEFAULT_WEIGHTS};
 
 fn parse_limits(config_json: &str) -> (u32, u32) {
     let v: serde_json::Value = serde_json::from_str(config_json).unwrap_or_default();
@@ -180,9 +180,11 @@ fn parse_sched_config(json: &str) -> SchedConfig {
         _ => Algorithm::Sm2,
     };
     let fsrs_weights = {
-        let mut arr = FSRS5_DEFAULT_WEIGHTS;
+        // Start from FSRS-6 defaults so old 19-weight configs are automatically
+        // padded with correct values for the two new FSRS-6 parameters.
+        let mut arr = FSRS6_DEFAULT_WEIGHTS;
         if let Some(weights) = v["fsrs"]["weights"].as_array() {
-            for (i, w) in weights.iter().enumerate().take(19) {
+            for (i, w) in weights.iter().enumerate().take(21) {
                 if let Some(f) = w.as_f64() {
                     arr[i] = f;
                 }

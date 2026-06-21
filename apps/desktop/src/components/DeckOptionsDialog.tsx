@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ipc, errorMessage } from "@/lib/ipc";
 import type { DeckConfig, FsrsOptimizeResult } from "@synapse/ipc-types";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { scaleIn } from "@/lib/motion";
 
 type Tab = "general" | "new" | "reviews" | "lapses" | "fsrs";
 
@@ -131,11 +133,15 @@ export function DeckOptionsDialog({ deckId, deckName, onClose, onSaved }: Props)
       onClick={(e) => e.target === e.currentTarget && onClose()}
       aria-hidden="true"
     >
-      <div
+      <motion.div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        variants={scaleIn}
+        initial="hidden"
+        animate="show"
+        exit="exit"
         className="flex w-[560px] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl"
       >
         {/* Header */}
@@ -324,7 +330,7 @@ export function DeckOptionsDialog({ deckId, deckName, onClose, onSaved }: Props)
                   />
                   <div className="space-y-1">
                     <span className="text-xs text-muted-foreground">
-                      FSRS weights (19 values, comma or space separated)
+                      FSRS-6 weights (21 values, comma or space separated)
                     </span>
                     <textarea
                       className="h-24 w-full resize-none rounded border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
@@ -336,13 +342,13 @@ export function DeckOptionsDialog({ deckId, deckName, onClose, onSaved }: Props)
                           .split(/[\s,]+/)
                           .map(Number)
                           .filter((n) => Number.isFinite(n));
-                        if (parsed.length === 19) {
+                        if (parsed.length === 21) {
                           set("fsrs_weights", parsed);
                         }
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Must be exactly 19 values. Invalid input is ignored.
+                      Must be exactly 21 values. Invalid input is ignored.
                     </p>
                   </div>
 
@@ -434,7 +440,7 @@ export function DeckOptionsDialog({ deckId, deckName, onClose, onSaved }: Props)
             </div>
           </>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }
