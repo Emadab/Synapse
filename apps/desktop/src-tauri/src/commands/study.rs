@@ -175,22 +175,17 @@ fn label(interval: Interval) -> String {
     match interval {
         Interval::Minutes(0) => "< 1m".into(),
         Interval::Minutes(m) if m < 60 => format!("{m}m"),
-        Interval::Minutes(m) => format!("{}h", m / 60),
-        Interval::Days(d) if d < 30 => format!("{d}d"),
-        Interval::Days(d) if d < 365 => {
-            let months = d as f64 / 30.0;
-            if (months.round() - months).abs() < 0.05 {
-                format!("{}mo", months.round() as u32)
-            } else {
-                format!("{months:.1}mo")
-            }
-        }
+        Interval::Minutes(m) if m % 60 == 0 => format!("{}h", m / 60),
+        Interval::Minutes(m) => format!("{:.1}h", m as f64 / 60.0),
+        Interval::Days(d) if d < 7 => format!("{d}d"),
+        Interval::Days(d) if d < 30 => format!("{}w", d / 7),
+        Interval::Days(d) if d < 365 => format!("{}mo", (d as f64 / 30.0).round() as u32),
         Interval::Days(d) => {
-            let years = d as f64 / 365.0;
-            if (years.round() - years).abs() < 0.05 {
-                format!("{}y", years.round() as u32)
+            let y = (d as f64 / 365.0 * 10.0).round() / 10.0;
+            if y.fract() == 0.0 {
+                format!("{}y", y as u32)
             } else {
-                format!("{years:.1}y")
+                format!("{y:.1}y")
             }
         }
     }
