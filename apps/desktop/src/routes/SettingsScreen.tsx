@@ -13,6 +13,7 @@ function MaintenanceSection() {
   const [integrityResult, setIntegrityResult] = useState<string[]>([]);
   const [optimizeMsg, setOptimizeMsg] = useState<string>("");
   const [mediaResult, setMediaResult] = useState<{ orphan_files: string[]; missing_files: string[] } | null>(null);
+  const [deleteOrphanConfirm, setDeleteOrphanConfirm] = useState(false);
   const [restoreConfirm, setRestoreConfirm] = useState<string | null>(null);
 
   const backupsQuery = useQuery({ queryKey: ["backups"], queryFn: ipc.listBackups });
@@ -38,6 +39,12 @@ function MaintenanceSection() {
     },
   });
 
+  const deleteBackupMut = useMutation({
+    mutationFn: (name: string) => ipc.deleteBackup(name),
+    onSuccess: () => void backupsQuery.refetch(),
+    onError: (e) => setBackupMsg(errorMessage(e)),
+  });
+
   const integrityMut = useMutation({
     mutationFn: ipc.checkIntegrity,
     onSuccess: (errs) => setIntegrityResult(errs),
@@ -56,7 +63,20 @@ function MaintenanceSection() {
     onError: (e) => setMediaResult({ orphan_files: [errorMessage(e)], missing_files: [] }),
   });
 
-  const busy = backupMut.isPending || restoreMut.isPending || integrityMut.isPending || optimizeMut.isPending || mediaMut.isPending;
+  const deleteOrphanMut = useMutation({
+    mutationFn: (files: string[]) => ipc.deleteOrphanMedia(files),
+    onSuccess: (count) => {
+      setDeleteOrphanConfirm(false);
+      setMediaResult((prev) => prev ? { ...prev, orphan_files: [] } : prev);
+      setOptimizeMsg(`Deleted ${count} orphan file${count === 1 ? "" : "s"}.`);
+    },
+    onError: (e) => {
+      setDeleteOrphanConfirm(false);
+      setOptimizeMsg(errorMessage(e));
+    },
+  });
+
+  const busy = backupMut.isPending || restoreMut.isPending || deleteBackupMut.isPending || integrityMut.isPending || optimizeMut.isPending || mediaMut.isPending || deleteOrphanMut.isPending;
 
   return (
     <section className="mt-8 max-w-xl space-y-6">
@@ -94,6 +114,15 @@ function MaintenanceSection() {
                   onClick={() => setRestoreConfirm(b.name)}
                 >
                   Restore
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                  disabled={busy}
+                  onClick={() => deleteBackupMut.mutate(b.name)}
+                >
+                  Delete
                 </Button>
               </li>
             ))}
@@ -162,7 +191,7 @@ function MaintenanceSection() {
         {mediaResult && (mediaResult.orphan_files.length > 0 || mediaResult.missing_files.length > 0) && (
           <div className="space-y-2 text-sm">
             {mediaResult.orphan_files.length > 0 && (
-              <div>
+              <div className="space-y-2">
                 <p className="font-medium text-amber-600 dark:text-amber-400">
                   Orphan files ({mediaResult.orphan_files.length}) — on disk but not used:
                 </p>
@@ -170,6 +199,37 @@ function MaintenanceSection() {
                   {mediaResult.orphan_files.slice(0, 20).map((f) => <li key={f}>{f}</li>)}
                   {mediaResult.orphan_files.length > 20 && <li>…and {mediaResult.orphan_files.length - 20} more</li>}
                 </ul>
+                {!deleteOrphanConfirm ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                    disabled={busy}
+                    onClick={() => setDeleteOrphanConfirm(true)}
+                  >
+                    Delete orphan files…
+                  </Button>
+                ) : (
+                  <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 space-y-2 text-sm">
+                    <p className="font-medium text-destructive">
+                      Delete {mediaResult.orphan_files.length} orphan file{mediaResult.orphan_files.length === 1 ? "" : "s"}?
+                    </p>
+                    <p className="text-xs text-muted-foreground">This cannot be undone.</p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={deleteOrphanMut.isPending}
+                        onClick={() => deleteOrphanMut.mutate(mediaResult.orphan_files)}
+                      >
+                        {deleteOrphanMut.isPending ? "Deleting…" : "Yes, delete"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setDeleteOrphanConfirm(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {mediaResult.missing_files.length > 0 && (
@@ -243,7 +303,7 @@ function PluginManagerSection() {
   function markLoading(id: string, loading: boolean) {
     setLoadingIds((prev) => {
       const next = new Set(prev);
-      loading ? next.add(id) : next.delete(id);
+      if (loading) { next.add(id); } else { next.delete(id); }
       return next;
     });
   }

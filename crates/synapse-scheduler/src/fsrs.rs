@@ -93,7 +93,7 @@ fn fsrs_learning(
                     steps_remaining: 0,
                     interval_days: days,
                     reps: state.reps + 1,
-                    lapses: if is_relearn { state.lapses } else { state.lapses },
+                    lapses: state.lapses,
                     stability: Some(stability),
                     difficulty: Some(difficulty),
                     last_review_day: Some(ctx.today),

@@ -237,10 +237,14 @@ mod tests {
     fn review_ordering_hard_lt_good_lt_easy() {
         let s = Sm2Scheduler;
         // Use low ease (1.3) and high hard_interval_factor to stress ordering.
-        let mut cfg = SchedConfig::default();
-        cfg.hard_interval_factor = 1.2;
-        cfg.interval_modifier = 1.0;
-        let c = SchedContext { today: 0, config: cfg };
+        let c = SchedContext {
+            today: 0,
+            config: SchedConfig {
+                hard_interval_factor: 1.2,
+                interval_modifier: 1.0,
+                ..SchedConfig::default()
+            },
+        };
         let card = CardState {
             phase: CardPhase::Review,
             interval_days: 5,

@@ -1,5 +1,6 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   Download,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { DeckOptionsDialog } from "@/components/DeckOptionsDialog";
 import { errorMessage, ipc, isTauri, pickAndImportPackage } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
+import { dur, ease, listItem, scaleIn, staggerList } from "@/lib/motion";
 
 function CountBadge({ count, color }: { count: number; color: string }) {
   if (count === 0) return null;
@@ -75,7 +77,11 @@ function FilteredDeckDialog({
       className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div
+      <motion.div
+        variants={scaleIn}
+        initial="hidden"
+        animate="show"
+        exit="exit"
         className="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -155,7 +161,7 @@ function FilteredDeckDialog({
             {isPending ? "Building…" : isRebuild ? "Rebuild" : "Create"}
           </Button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -166,7 +172,7 @@ export function DeckBrowserScreen() {
   const queryClient = useQueryClient();
   const tauri = isTauri();
 
-  const { data: app } = useQuery({
+  useQuery({
     queryKey: queryKeys.appInfo,
     queryFn: ipc.appInfo,
     enabled: tauri,
@@ -268,34 +274,41 @@ export function DeckBrowserScreen() {
       />
 
       <div className="relative flex-1 overflow-auto">
-        {creating ? (
-          <form
-            className="flex items-center gap-2 border-b border-border bg-secondary/40 px-8 py-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (name.trim()) createMut.mutate(name.trim());
-            }}
-          >
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Deck name (use :: for sub-decks)"
-              className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-            <Button type="submit" size="sm" disabled={!name.trim() || createMut.isPending}>
-              Create
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => { setCreating(false); setName(""); }}
+        <AnimatePresence initial={false}>
+          {creating && (
+            <motion.form
+              key="create-form"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: dur.base, ease }}
+              className="flex items-center gap-2 border-b border-border bg-secondary/40 px-8 py-3 overflow-hidden"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (name.trim()) createMut.mutate(name.trim());
+              }}
             >
-              Cancel
-            </Button>
-          </form>
-        ) : null}
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Deck name (use :: for sub-decks)"
+                className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <Button type="submit" size="sm" disabled={!name.trim() || createMut.isPending}>
+                Create
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => { setCreating(false); setName(""); }}
+              >
+                Cancel
+              </Button>
+            </motion.form>
+          )}
+        </AnimatePresence>
 
         {createMut.isError ? (
           <p className="px-8 py-2 text-sm text-destructive">{errorMessage(createMut.error)}</p>
@@ -332,10 +345,18 @@ export function DeckBrowserScreen() {
             description="Create a deck above, or import an .apkg / .colpkg with the Import button."
           />
         ) : (
-          <ul className="divide-y divide-border">
-            {decks.map((deck: DeckSummary) => (
-              <Fragment key={deck.id}>
-                <li
+          <motion.ul
+            className="divide-y divide-border"
+            variants={staggerList}
+            initial="hidden"
+            animate="show"
+          >
+            <AnimatePresence>
+              {decks.map((deck: DeckSummary) => (
+                <motion.li
+                  key={deck.id}
+                  variants={listItem}
+                  exit={{ opacity: 0, x: -16, transition: { duration: dur.fast } }}
                   className="group flex items-center gap-3 px-8 py-3 hover:bg-accent/40"
                   style={{ paddingLeft: `${2 + deckDepth(deck.name) * 1.25}rem` }}
                 >
@@ -410,88 +431,104 @@ export function DeckBrowserScreen() {
                   >
                     <Trash2 className="text-destructive" />
                   </Button>
-                </li>
-              </Fragment>
-            ))}
-          </ul>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </motion.ul>
         )}
 
-        {app ? (
-          <div className="pointer-events-none absolute bottom-4 right-6 text-xs text-muted-foreground">
-            {app.name} v{app.version} · Tauri v{app.tauri_version}
-          </div>
-        ) : null}
       </div>
 
-      {pendingDelete && (
-        <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
-          onClick={() => setPendingDelete(null)}
-        >
-          <div
-            className="mx-4 w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+      {/* Delete confirmation dialog */}
+      <AnimatePresence>
+        {pendingDelete && (
+          <motion.div
+            key="delete-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: dur.fast }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+            onClick={() => setPendingDelete(null)}
           >
-            <div className="mb-4 flex items-center gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
-                <AlertTriangle className="size-5 text-destructive" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold">Delete deck?</p>
-                <p className="text-xs text-muted-foreground">
-                  {pendingDelete.is_filtered
-                    ? "Cards will be returned to their original decks first."
-                    : "This cannot be undone."}
-                </p>
+            <motion.div
+              variants={scaleIn}
+              initial="hidden"
+              animate="show"
+              exit="exit"
+              className="mx-4 w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                  <AlertTriangle className="size-5 text-destructive" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">Delete deck?</p>
+                  <p className="text-xs text-muted-foreground">
+                    {pendingDelete.is_filtered
+                      ? "Cards will be returned to their original decks first."
+                      : "This cannot be undone."}
+                  </p>
+                </div>
               </div>
-            </div>
-            <p className="mb-6 rounded-md bg-secondary/60 px-3 py-2 text-sm font-medium">
-              {pendingDelete.name}
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setPendingDelete(null)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                disabled={deleteMut.isPending}
-                onClick={() => {
-                  deleteMut.mutate(pendingDelete.id);
-                  setPendingDelete(null);
-                }}
-              >
-                <Trash2 className="size-3.5" />
-                Delete
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+              <p className="mb-6 rounded-md bg-secondary/60 px-3 py-2 text-sm font-medium">
+                {pendingDelete.name}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setPendingDelete(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={deleteMut.isPending}
+                  onClick={() => {
+                    deleteMut.mutate(pendingDelete.id);
+                    setPendingDelete(null);
+                  }}
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {optionsDeck && (
-        <DeckOptionsDialog
-          deckId={optionsDeck.id}
-          deckName={optionsDeck.name}
-          onClose={() => setOptionsDeck(null)}
-          onSaved={() => void invalidateDecks()}
-        />
-      )}
+      <AnimatePresence>
+        {optionsDeck && (
+          <DeckOptionsDialog
+            key={optionsDeck.id}
+            deckId={optionsDeck.id}
+            deckName={optionsDeck.name}
+            onClose={() => setOptionsDeck(null)}
+            onSaved={() => void invalidateDecks()}
+          />
+        )}
+      </AnimatePresence>
 
-      {showFilteredDialog && (
-        <FilteredDeckDialog
-          onClose={() => setShowFilteredDialog(false)}
-          onSaved={() => void invalidateDecks()}
-        />
-      )}
+      <AnimatePresence>
+        {showFilteredDialog && (
+          <FilteredDeckDialog
+            key="filtered-new"
+            onClose={() => setShowFilteredDialog(false)}
+            onSaved={() => void invalidateDecks()}
+          />
+        )}
+      </AnimatePresence>
 
-      {rebuildTarget && (
-        <FilteredDeckDialog
-          initial={rebuildTarget}
-          onClose={() => setRebuildTarget(null)}
-          onSaved={() => void invalidateDecks()}
-        />
-      )}
+      <AnimatePresence>
+        {rebuildTarget && (
+          <FilteredDeckDialog
+            key={rebuildTarget.deck_id}
+            initial={rebuildTarget}
+            onClose={() => setRebuildTarget(null)}
+            onSaved={() => void invalidateDecks()}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

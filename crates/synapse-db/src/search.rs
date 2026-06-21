@@ -400,7 +400,6 @@ pub fn remove_note_tag(conn: &Connection, note_id: i64, tag: &str, now_ms: i64) 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::storage::SqliteStorage;
     use synapse_core::ports::Storage;
 

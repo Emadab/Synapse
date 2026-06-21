@@ -411,7 +411,7 @@ impl Collection {
         let now_ms = self.clock.now_ms();
         let is_leech = leech_threshold > 0
             && next.lapses > 0
-            && next.lapses % leech_threshold == 0;
+            && next.lapses.is_multiple_of(leech_threshold);
         if is_leech {
             self.storage.add_note_tag(note_id, "leech", now_ms)?;
             self.storage.suspend_cards(&[card_id])?;
