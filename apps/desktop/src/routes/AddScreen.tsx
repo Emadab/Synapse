@@ -55,7 +55,9 @@ export function AddScreen() {
       return ipc.addNote(notetypeId, deckId, fields, tags.split(/\s+/).filter(Boolean));
     },
     onSuccess: (result) => {
-      setLastResult(`Added — ${result.cards_added} card${result.cards_added === 1 ? "" : "s"} created.`);
+      setLastResult(
+        `Added — ${result.cards_added} card${result.cards_added === 1 ? "" : "s"} created.`,
+      );
       // Reset fields for the next note, keep notetype + deck selected.
       if (selectedNotetype) {
         setFields(selectedNotetype.field_names.map(() => ""));
@@ -77,7 +79,10 @@ export function AddScreen() {
 
   return (
     <div className="flex h-full flex-col">
-      <ScreenHeader title="Add Note" description="Create a new note and generate its study cards." />
+      <ScreenHeader
+        title="Add Note"
+        description="Create a new note and generate its study cards."
+      />
 
       <div className="mx-auto w-full max-w-2xl space-y-5 p-8">
         {/* Notetype + Deck pickers */}
@@ -148,9 +153,7 @@ export function AddScreen() {
           </Button>
           {lastResult && <span className="text-sm text-muted-foreground">{lastResult}</span>}
           {add.isError && (
-            <span className="text-sm text-destructive">
-              {String((add.error as Error).message)}
-            </span>
+            <span className="text-sm text-destructive">{String((add.error as Error).message)}</span>
           )}
         </div>
       </div>

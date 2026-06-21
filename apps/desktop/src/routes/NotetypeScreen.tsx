@@ -42,19 +42,12 @@ export function NotetypeScreen() {
 
   // Preview query — debounced by template selection.
   const template: TemplateSummary | undefined = nt?.templates.find(
-    (t) => Number(t.ord) === selectedTemplateOrd
+    (t) => Number(t.ord) === selectedTemplateOrd,
   );
   const sampleFields = nt?.fields.map(() => "") ?? [];
   const preview = useQuery({
-    queryKey: [
-      "preview",
-      selectedId,
-      selectedTemplateOrd,
-      template?.qfmt,
-      template?.afmt,
-    ],
-    queryFn: () =>
-      ipc.previewTemplate(selectedId!, selectedTemplateOrd, sampleFields),
+    queryKey: ["preview", selectedId, selectedTemplateOrd, template?.qfmt, template?.afmt],
+    queryFn: () => ipc.previewTemplate(selectedId!, selectedTemplateOrd, sampleFields),
     enabled: tauri && selectedId !== null && !!template,
     staleTime: 0,
   });
@@ -87,8 +80,7 @@ export function NotetypeScreen() {
   });
 
   const renameNotetype = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) =>
-      ipc.renameNotetype(id, name),
+    mutationFn: ({ id, name }: { id: number; name: string }) => ipc.renameNotetype(id, name),
     onSuccess: invalidate,
   });
 
@@ -104,9 +96,7 @@ export function NotetypeScreen() {
       const warn = await ipc.checkFieldRemove(selectedId!, ord);
       if (
         warn.notes_with_content > 0 &&
-        !confirm(
-          `${warn.notes_with_content} note(s) have content in this field. Delete anyway?`
-        )
+        !confirm(`${warn.notes_with_content} note(s) have content in this field. Delete anyway?`)
       ) {
         return;
       }
@@ -138,8 +128,7 @@ export function NotetypeScreen() {
   // ── Template mutations ─────────────────────────────────────────────────────
 
   const addTemplate = useMutation({
-    mutationFn: () =>
-      ipc.addTemplate(selectedId!, "New Card", "{{Front}}", "{{Back}}"),
+    mutationFn: () => ipc.addTemplate(selectedId!, "New Card", "{{Front}}", "{{Back}}"),
     onSuccess: invalidate,
   });
 
@@ -178,7 +167,7 @@ export function NotetypeScreen() {
       setTmplQfmt(template.qfmt);
       setTmplAfmt(template.afmt);
     }
-  }, [template?.ord, selectedId]);
+  }, [template, selectedId]);
 
   if (!tauri) {
     return (
@@ -259,11 +248,7 @@ export function NotetypeScreen() {
                 className="text-destructive hover:text-destructive"
                 title="Delete note type"
                 onClick={() => {
-                  if (
-                    confirm(
-                      `Delete "${nt.name}"? This fails if notes reference it.`
-                    )
-                  ) {
+                  if (confirm(`Delete "${nt.name}"? This fails if notes reference it.`)) {
                     deleteNotetype.mutate(nt.id);
                   }
                 }}
@@ -297,49 +282,45 @@ export function NotetypeScreen() {
                   {nt.fields.map((field) => {
                     const fieldOrd = Number(field.ord);
                     return (
-                    <div
-                      key={fieldOrd}
-                      className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2"
-                    >
-                      <div className="flex flex-col gap-0.5">
+                      <div
+                        key={fieldOrd}
+                        className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            onClick={() => moveField.mutate({ ord: fieldOrd, direction: -1 })}
+                            disabled={fieldOrd === 0}
+                            className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                          >
+                            <ChevronUp className="size-3.5" />
+                          </button>
+                          <button
+                            onClick={() => moveField.mutate({ ord: fieldOrd, direction: 1 })}
+                            disabled={fieldOrd === nt.fields.length - 1}
+                            className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                          >
+                            <ChevronDown className="size-3.5" />
+                          </button>
+                        </div>
+
+                        <input
+                          className="flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm outline-none hover:border-input focus:border-ring focus:ring-1 focus:ring-ring"
+                          defaultValue={field.name}
+                          onBlur={(e) => {
+                            const name = e.target.value.trim();
+                            if (name && name !== field.name) {
+                              renameField.mutate({ ord: fieldOrd, name });
+                            }
+                          }}
+                        />
+
                         <button
-                          onClick={() =>
-                            moveField.mutate({ ord: fieldOrd, direction: -1 })
-                          }
-                          disabled={fieldOrd === 0}
-                          className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                          onClick={() => removeField.mutate(fieldOrd)}
+                          className="text-muted-foreground hover:text-destructive"
                         >
-                          <ChevronUp className="size-3.5" />
-                        </button>
-                        <button
-                          onClick={() =>
-                            moveField.mutate({ ord: fieldOrd, direction: 1 })
-                          }
-                          disabled={fieldOrd === nt.fields.length - 1}
-                          className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                        >
-                          <ChevronDown className="size-3.5" />
+                          <Trash2 className="size-3.5" />
                         </button>
                       </div>
-
-                      <input
-                        className="flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm outline-none hover:border-input focus:border-ring focus:ring-1 focus:ring-ring"
-                        defaultValue={field.name}
-                        onBlur={(e) => {
-                          const name = e.target.value.trim();
-                          if (name && name !== field.name) {
-                            renameField.mutate({ ord: fieldOrd, name });
-                          }
-                        }}
-                      />
-
-                      <button
-                        onClick={() => removeField.mutate(fieldOrd)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
                     );
                   })}
 
@@ -378,33 +359,31 @@ export function NotetypeScreen() {
                     {nt.templates.map((t) => {
                       const tOrd = Number(t.ord);
                       return (
-                      <button
-                        key={tOrd}
-                        onClick={() => setSelectedTemplateOrd(tOrd)}
-                        className={[
-                          "flex items-center justify-between px-3 py-2 text-left text-sm transition-colors",
-                          selectedTemplateOrd === tOrd
-                            ? "bg-sidebar-accent font-medium"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent/60",
-                        ].join(" ")}
-                      >
-                        <span className="truncate">{t.name}</span>
-                        {nt.templates.length > 1 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (
-                                confirm(`Remove card template "${t.name}"?`)
-                              ) {
-                                removeTemplate.mutate(tOrd);
-                              }
-                            }}
-                            className="ml-1 text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
-                        )}
-                      </button>
+                        <button
+                          key={tOrd}
+                          onClick={() => setSelectedTemplateOrd(tOrd)}
+                          className={[
+                            "flex items-center justify-between px-3 py-2 text-left text-sm transition-colors",
+                            selectedTemplateOrd === tOrd
+                              ? "bg-sidebar-accent font-medium"
+                              : "text-sidebar-foreground hover:bg-sidebar-accent/60",
+                          ].join(" ")}
+                        >
+                          <span className="truncate">{t.name}</span>
+                          {nt.templates.length > 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Remove card template "${t.name}"?`)) {
+                                  removeTemplate.mutate(tOrd);
+                                }
+                              }}
+                              className="ml-1 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="size-3" />
+                            </button>
+                          )}
+                        </button>
                       );
                     })}
                   </div>
@@ -472,9 +451,7 @@ export function NotetypeScreen() {
                           </span>
                           <div className="mb-3 space-y-1">
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="mb-1 text-xs text-muted-foreground">
-                                Front
-                              </div>
+                              <div className="mb-1 text-xs text-muted-foreground">Front</div>
                               <div
                                 className="prose prose-sm dark:prose-invert max-w-none text-sm"
                                 dangerouslySetInnerHTML={{
@@ -483,9 +460,7 @@ export function NotetypeScreen() {
                               />
                             </div>
                             <div className="rounded border border-border bg-card p-3">
-                              <div className="mb-1 text-xs text-muted-foreground">
-                                Back
-                              </div>
+                              <div className="mb-1 text-xs text-muted-foreground">Back</div>
                               <div
                                 className="prose prose-sm dark:prose-invert max-w-none text-sm"
                                 dangerouslySetInnerHTML={{

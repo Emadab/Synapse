@@ -6,9 +6,7 @@
 use std::path::PathBuf;
 
 use synapse_ankifmt::{read_package, write_apkg};
-use synapse_core::model::{
-    CanonicalModel, Card, Deck, Field, Note, Notetype, Revlog, Template,
-};
+use synapse_core::model::{CanonicalModel, Card, Deck, Field, Note, Notetype, Revlog, Template};
 
 #[test]
 fn real_fixtures_parse_or_are_known_unsupported() {
@@ -65,8 +63,18 @@ fn write_then_read_round_trips() {
             config_json: "{}".into(),
         }],
         fields: vec![
-            Field { notetype_id: 10, ord: 0, name: "Front".into(), config_json: "{}".into() },
-            Field { notetype_id: 10, ord: 1, name: "Back".into(), config_json: "{}".into() },
+            Field {
+                notetype_id: 10,
+                ord: 0,
+                name: "Front".into(),
+                config_json: "{}".into(),
+            },
+            Field {
+                notetype_id: 10,
+                ord: 1,
+                name: "Back".into(),
+                config_json: "{}".into(),
+            },
         ],
         templates: vec![Template {
             notetype_id: 10,

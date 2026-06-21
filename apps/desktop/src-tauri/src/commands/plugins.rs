@@ -31,7 +31,9 @@ fn to_info(r: &PluginRecord) -> PluginInfo {
 #[tauri::command]
 pub fn list_plugins(mgr: State<'_, Mutex<PluginManager>>) -> IpcResult<Vec<PluginInfo>> {
     let mgr = mgr.lock().unwrap();
-    mgr.list().map(|records| records.iter().map(to_info).collect()).map_err(plugin_err)
+    mgr.list()
+        .map(|records| records.iter().map(to_info).collect())
+        .map_err(plugin_err)
 }
 
 #[tauri::command]

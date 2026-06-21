@@ -77,11 +77,15 @@ export function CommandPalette() {
           </Command.Item>
           <Command.Item className={itemClass} onSelect={() => go("/study")}>
             <BookOpen /> Study
-            <span className={shortcutClass}><Kbd>S</Kbd></span>
+            <span className={shortcutClass}>
+              <Kbd>S</Kbd>
+            </span>
           </Command.Item>
           <Command.Item className={itemClass} onSelect={() => go("/browse")}>
             <Search /> Browse cards
-            <span className={shortcutClass}><Kbd>B</Kbd></span>
+            <span className={shortcutClass}>
+              <Kbd>B</Kbd>
+            </span>
           </Command.Item>
           <Command.Item className={itemClass} onSelect={() => go("/stats")}>
             <BarChart3 /> Statistics

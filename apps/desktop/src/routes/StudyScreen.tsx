@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { BookOpen, Check, Flag, Layers, MinusCircle, SkipForward, Volume2 } from "lucide-react";
@@ -174,12 +174,18 @@ function Session({
 
   const suspendMut = useMutation({
     mutationFn: (cardId: number) => ipc.suspendCards([cardId]),
-    onSuccess: () => void queryClient.refetchQueries({ queryKey: queryKeys.queue(String(deckId)) }).then(() => setRevealed(false)),
+    onSuccess: () =>
+      void queryClient
+        .refetchQueries({ queryKey: queryKeys.queue(String(deckId)) })
+        .then(() => setRevealed(false)),
   });
 
   const buryMut = useMutation({
     mutationFn: (cardId: number) => ipc.buryCards([cardId]),
-    onSuccess: () => void queryClient.refetchQueries({ queryKey: queryKeys.queue(String(deckId)) }).then(() => setRevealed(false)),
+    onSuccess: () =>
+      void queryClient
+        .refetchQueries({ queryKey: queryKeys.queue(String(deckId)) })
+        .then(() => setRevealed(false)),
   });
 
   const flagMut = useMutation({
@@ -192,14 +198,21 @@ function Session({
   const card = cardQuery.data ?? null;
   const actionBusy = suspendMut.isPending || buryMut.isPending || flagMut.isPending;
 
-  const prepared = card
-    ? {
-        q: prepareCard(card.question, tauri),
-        a: prepareCard(card.answer, tauri),
-      }
-    : null;
+  const prepared = useMemo(
+    () =>
+      card
+        ? {
+            q: prepareCard(card.question, tauri),
+            a: prepareCard(card.answer, tauri),
+          }
+        : null,
+    [card, tauri],
+  );
 
-  const currentSounds = prepared ? (revealed ? prepared.a.sounds : prepared.q.sounds) : [];
+  const currentSounds = useMemo(
+    () => (prepared ? (revealed ? prepared.a.sounds : prepared.q.sounds) : []),
+    [prepared, revealed],
+  );
 
   // Audio sequencer
   const [soundIdx, setSoundIdx] = useState(-1);
@@ -237,7 +250,6 @@ function Session({
       if (cardFrontRef.current) renderMathInElement(cardFrontRef.current, KATEX_OPTIONS);
       if (cardBackRef.current) renderMathInElement(cardBackRef.current, KATEX_OPTIONS);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card?.card_id, prefersReduced]);
 
   // Also re-run KaTeX on reduced-motion path when revealed (html changes).
@@ -398,7 +410,9 @@ function Session({
                         hint={btn.hint}
                         hotkey={btn.hotkey}
                         variant={btn.variant}
-                        onClick={() => answerMut.mutate({ cardId: card.card_id, rating: btn.rating })}
+                        onClick={() =>
+                          answerMut.mutate({ cardId: card.card_id, rating: btn.rating })
+                        }
                       />
                     </motion.div>
                   ))}
@@ -519,25 +533,55 @@ type AnswerBtnDef = {
   rating: RatingValue;
 };
 
-function getAnswerButtons(card: { again: string; hard: string; good: string; easy: string; algorithm: string; card_phase: string }): AnswerBtnDef[] {
+function getAnswerButtons(card: {
+  again: string;
+  hard: string;
+  good: string;
+  easy: string;
+  algorithm: string;
+  card_phase: string;
+}): AnswerBtnDef[] {
   const isFsrsReview =
-    card.algorithm === "fsrs" &&
-    (card.card_phase === "review" || card.card_phase === "relearning");
+    card.algorithm === "fsrs" && (card.card_phase === "review" || card.card_phase === "relearning");
 
   if (isFsrsReview) {
     return [
-      { label: "Forgot",     hint: card.again, hotkey: "1", variant: "destructive", rating: Rating.Again },
-      { label: "Remembered", hint: card.good,  hotkey: "2", variant: "default",     rating: Rating.Good },
-      { label: "Easy",       hint: card.easy,  hotkey: "3", variant: "outline",     rating: Rating.Easy },
+      {
+        label: "Forgot",
+        hint: card.again,
+        hotkey: "1",
+        variant: "destructive",
+        rating: Rating.Again,
+      },
+      {
+        label: "Remembered",
+        hint: card.good,
+        hotkey: "2",
+        variant: "default",
+        rating: Rating.Good,
+      },
+      { label: "Easy", hint: card.easy, hotkey: "3", variant: "outline", rating: Rating.Easy },
     ];
   }
 
   const isFsrs = card.algorithm === "fsrs";
   return [
-    { label: isFsrs ? "Forgot"     : "Again", hint: card.again, hotkey: "1", variant: "destructive", rating: Rating.Again },
-    { label: "Hard",                           hint: card.hard,  hotkey: "2", variant: "secondary",   rating: Rating.Hard },
-    { label: isFsrs ? "Remembered" : "Good",  hint: card.good,  hotkey: "3", variant: "default",     rating: Rating.Good },
-    { label: "Easy",                           hint: card.easy,  hotkey: "4", variant: "outline",     rating: Rating.Easy },
+    {
+      label: isFsrs ? "Forgot" : "Again",
+      hint: card.again,
+      hotkey: "1",
+      variant: "destructive",
+      rating: Rating.Again,
+    },
+    { label: "Hard", hint: card.hard, hotkey: "2", variant: "secondary", rating: Rating.Hard },
+    {
+      label: isFsrs ? "Remembered" : "Good",
+      hint: card.good,
+      hotkey: "3",
+      variant: "default",
+      rating: Rating.Good,
+    },
+    { label: "Easy", hint: card.easy, hotkey: "4", variant: "outline", rating: Rating.Easy },
   ];
 }
 

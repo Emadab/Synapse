@@ -26,18 +26,18 @@ Synapse reads Anki `.apkg` and `.colpkg` files (schema v11 and v18).
 
 ### Card actions during study
 
-| Action | Key |
-|--------|-----|
-| Show answer | Space / Enter |
-| Again | 1 |
-| Hard | 2 |
-| Good | 3 |
-| Easy | 4 |
-| Replay audio | R |
-| Suspend card | S |
-| Bury card | B |
-| Flag | F |
-| Keyboard shortcuts | ? |
+| Action             | Key           |
+| ------------------ | ------------- |
+| Show answer        | Space / Enter |
+| Again              | 1             |
+| Hard               | 2             |
+| Good               | 3             |
+| Easy               | 4             |
+| Replay audio       | R             |
+| Suspend card       | S             |
+| Bury card          | B             |
+| Flag               | F             |
+| Keyboard shortcuts | ?             |
 
 ### Daily limits
 
@@ -59,6 +59,7 @@ To edit an existing note, find it in the **Browse** screen and click the row.
 ## Note types and templates
 
 Navigate to **Note Types** to:
+
 - Create a new note type with custom fields.
 - Edit card templates (question / answer format using `{{FieldName}}` syntax).
 - Preview how a template renders with sample data.
@@ -71,13 +72,13 @@ Template syntax follows Anki conventions: `{{Field}}`, `{{#Field}}...{{/Field}}`
 
 Click the **⋯** menu next to a deck → **Options**.
 
-| Tab | Settings |
-|-----|----------|
-| General | Daily new and review limits |
-| New cards | Learning steps, graduating interval, starting ease |
-| Reviews | Max interval, ease bonus, hard interval |
-| Lapses | Relearning steps, minimum interval, leech threshold |
-| FSRS | Enable FSRS, set weights and target retention |
+| Tab       | Settings                                            |
+| --------- | --------------------------------------------------- |
+| General   | Daily new and review limits                         |
+| New cards | Learning steps, graduating interval, starting ease  |
+| Reviews   | Max interval, ease bonus, hard interval             |
+| Lapses    | Relearning steps, minimum interval, leech threshold |
+| FSRS      | Enable FSRS, set weights and target retention       |
 
 ### Switching to FSRS
 
@@ -89,15 +90,15 @@ Set **Algorithm** to **FSRS** in the FSRS tab. Use **Optimize** (after accumulat
 
 The **Browse** screen shows all notes and cards. Use the search bar to filter:
 
-| Query | Meaning |
-|-------|---------|
+| Query          | Meaning                   |
+| -------------- | ------------------------- |
 | `deck:Spanish` | Cards in the Spanish deck |
-| `tag:grammar` | Notes tagged "grammar" |
-| `is:due` | Cards due today |
-| `is:suspended` | Suspended cards |
-| `flag:1` | Flagged red |
-| `prop:ivl>30` | Interval > 30 days |
-| `-tag:easy` | Negate with `-` |
+| `tag:grammar`  | Notes tagged "grammar"    |
+| `is:due`       | Cards due today           |
+| `is:suspended` | Suspended cards           |
+| `flag:1`       | Flagged red               |
+| `prop:ivl>30`  | Interval > 30 days        |
+| `-tag:easy`    | Negate with `-`           |
 
 Select multiple rows to bulk-suspend, bulk-set flag, bulk-change deck, or delete.
 
@@ -115,6 +116,7 @@ Select multiple rows to bulk-suspend, bulk-set flag, bulk-change deck, or delete
 ## Statistics
 
 The **Stats** screen shows:
+
 - Today's studied counts (new / learning / review)
 - Calendar heatmap
 - Forecast (cards due per day)
@@ -125,14 +127,14 @@ The **Stats** screen shows:
 
 ## Settings
 
-| Section | What it controls |
-|---------|-----------------|
-| Appearance | Light / Dark / System theme |
-| Scheduling | Default algorithm preference |
-| Export | Export full collection as `.apkg` |
-| Updates | Check for a newer version |
+| Section     | What it controls                                           |
+| ----------- | ---------------------------------------------------------- |
+| Appearance  | Light / Dark / System theme                                |
+| Scheduling  | Default algorithm preference                               |
+| Export      | Export full collection as `.apkg`                          |
+| Updates     | Check for a newer version                                  |
 | Maintenance | Backup, restore, integrity check, optimize DB, media check |
-| Plugins | Install, enable, disable sandboxed plugin scripts |
+| Plugins     | Install, enable, disable sandboxed plugin scripts          |
 
 ### Keyboard shortcuts reference
 

@@ -38,7 +38,13 @@ pub struct Rendered {
 pub fn render(req: &RenderRequest<'_>) -> Rendered {
     let active = req.card_ord + 1;
     let question = normalize_latex(&render_side(req.template.qfmt, req, None, active, false));
-    let answer = normalize_latex(&render_side(req.template.afmt, req, Some(&question), active, true));
+    let answer = normalize_latex(&render_side(
+        req.template.afmt,
+        req,
+        Some(&question),
+        active,
+        true,
+    ));
     Rendered { question, answer }
 }
 
@@ -53,22 +59,16 @@ pub fn normalize_latex(html: &str) -> String {
     static RE_INLINE: OnceLock<Regex> = OnceLock::new();
     static RE_DISPLAY2: OnceLock<Regex> = OnceLock::new();
 
-    let re_display = RE_DISPLAY
-        .get_or_init(|| Regex::new(r"(?s)\[latex\](.*?)\[/latex\]").unwrap());
-    let re_inline = RE_INLINE
-        .get_or_init(|| Regex::new(r"(?s)\[\$\](.*?)\[\$\]").unwrap());
-    let re_display2 = RE_DISPLAY2
-        .get_or_init(|| Regex::new(r"(?s)\[\$\$\](.*?)\[\$\$\]").unwrap());
+    let re_display =
+        RE_DISPLAY.get_or_init(|| Regex::new(r"(?s)\[latex\](.*?)\[/latex\]").unwrap());
+    let re_inline = RE_INLINE.get_or_init(|| Regex::new(r"(?s)\[\$\](.*?)\[\$\]").unwrap());
+    let re_display2 = RE_DISPLAY2.get_or_init(|| Regex::new(r"(?s)\[\$\$\](.*?)\[\$\$\]").unwrap());
 
-    let s = re_display.replace_all(html, |c: &regex::Captures<'_>| {
-        format!("\\[{}\\]", &c[1])
-    });
-    let s = re_display2.replace_all(&s, |c: &regex::Captures<'_>| {
-        format!("\\[{}\\]", &c[1])
-    });
-    re_inline.replace_all(&s, |c: &regex::Captures<'_>| {
-        format!("\\({}\\)", &c[1])
-    }).into_owned()
+    let s = re_display.replace_all(html, |c: &regex::Captures<'_>| format!("\\[{}\\]", &c[1]));
+    let s = re_display2.replace_all(&s, |c: &regex::Captures<'_>| format!("\\[{}\\]", &c[1]));
+    re_inline
+        .replace_all(&s, |c: &regex::Captures<'_>| format!("\\({}\\)", &c[1]))
+        .into_owned()
 }
 
 /// Extract sound filenames from `[sound:name]` markers, in document order.
@@ -307,10 +307,7 @@ mod tests {
 
     #[test]
     fn normalize_latex_converts_legacy_forms() {
-        assert_eq!(
-            normalize_latex("[latex]E=mc^2[/latex]"),
-            "\\[E=mc^2\\]"
-        );
+        assert_eq!(normalize_latex("[latex]E=mc^2[/latex]"), "\\[E=mc^2\\]");
         assert_eq!(normalize_latex("[$]x^2[$]"), "\\(x^2\\)");
         assert_eq!(normalize_latex("[$$]\\sum n[$$]"), "\\[\\sum n\\]");
         // Modern forms pass through unchanged.

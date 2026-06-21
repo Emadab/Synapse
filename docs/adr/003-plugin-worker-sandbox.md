@@ -6,6 +6,7 @@
 ## Context
 
 Synapse needs a plugin runtime that:
+
 - Sandboxes untrusted JS code (no DOM access, no arbitrary fs/net)
 - Enforces capability declarations from the plugin manifest
 - Works without adding new native Rust dependencies (network blocked in CI; `wasmtime` and `rquickjs` can't be fetched)

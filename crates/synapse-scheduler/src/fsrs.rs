@@ -52,17 +52,32 @@ fn fsrs_learning(
     is_relearn: bool,
 ) -> AnswerOutcome {
     let cfg = &ctx.config;
-    let phase = if is_relearn { CardPhase::Relearning } else { CardPhase::Learning };
+    let phase = if is_relearn {
+        CardPhase::Relearning
+    } else {
+        CardPhase::Learning
+    };
     let w = &cfg.fsrs_weights;
     let g = rating as i64;
 
     match step_action(state, rating, steps) {
         StepAction::Restart { minutes, total } => AnswerOutcome {
-            next: CardState { phase, steps_remaining: total, ..*state },
+            next: CardState {
+                phase,
+                steps_remaining: total,
+                ..*state
+            },
             interval: Interval::Minutes(minutes),
         },
-        StepAction::Continue { steps_remaining, minutes } => AnswerOutcome {
-            next: CardState { phase, steps_remaining, ..*state },
+        StepAction::Continue {
+            steps_remaining,
+            minutes,
+        } => AnswerOutcome {
+            next: CardState {
+                phase,
+                steps_remaining,
+                ..*state
+            },
             interval: Interval::Minutes(minutes),
         },
         StepAction::Graduate { rating: grad_r } => {
@@ -71,9 +86,8 @@ fn fsrs_learning(
                 // After a lapse: recalculate lapse stability, keep difficulty.
                 let (s0, d0) = match (state.stability, state.difficulty) {
                     (Some(s), Some(d)) => {
-                        let elapsed = (ctx.today
-                            - state.last_review_day.unwrap_or(ctx.today))
-                        .max(0) as f64;
+                        let elapsed =
+                            (ctx.today - state.last_review_day.unwrap_or(ctx.today)).max(0) as f64;
                         let r = retrievability(elapsed, s, w);
                         let new_d = next_difficulty(w, d, g);
                         let new_s = forget_stability(w, d, s, r);
@@ -116,8 +130,7 @@ fn fsrs_review(state: &CardState, rating: Rating, ctx: &SchedContext) -> AnswerO
 
     let (stability, difficulty, lapse) = match (state.stability, state.difficulty) {
         (Some(s), Some(d)) => {
-            let elapsed =
-                (ctx.today - state.last_review_day.unwrap_or(ctx.today)).max(0) as f64;
+            let elapsed = (ctx.today - state.last_review_day.unwrap_or(ctx.today)).max(0) as f64;
 
             let difficulty = next_difficulty(w, d, g);
 
@@ -207,9 +220,10 @@ fn interval_from_stability(stability: f64, cfg: &SchedConfig) -> u32 {
     let decay = fsrs6_decay(w);
     let factor = fsrs6_factor(w);
     let days = (stability / factor) * (cfg.desired_retention.powf(1.0 / decay) - 1.0);
-    days.round()
-        .clamp(cfg.minimum_interval_days as f64, cfg.maximum_interval_days as f64)
-        as u32
+    days.round().clamp(
+        cfg.minimum_interval_days as f64,
+        cfg.maximum_interval_days as f64,
+    ) as u32
 }
 
 fn initial_stability(w: &[f64; 21], g: i64) -> f64 {
@@ -281,7 +295,10 @@ mod tests {
     }
 
     fn days(i: Interval) -> Option<u32> {
-        match i { Interval::Days(d) => Some(d), _ => None }
+        match i {
+            Interval::Days(d) => Some(d),
+            _ => None,
+        }
     }
 
     #[test]
@@ -295,7 +312,10 @@ mod tests {
         // Good again → graduates to Review.
         let o2 = s.answer(&o1.next, Rating::Good, &c);
         assert_eq!(o2.next.phase, CardPhase::Review);
-        assert!(days(o2.interval).is_some(), "graduated interval must be in days");
+        assert!(
+            days(o2.interval).is_some(),
+            "graduated interval must be in days"
+        );
         assert!(o2.next.stability.is_some());
     }
 

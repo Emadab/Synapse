@@ -42,10 +42,8 @@ export const ipc = {
   deleteDeck: (id: number) => invoke<void>("delete_deck", { id }),
 
   // Full deck config (M14)
-  getDeckConfig: (deckId: number) =>
-    invoke<DeckConfig>("get_deck_config", { deckId }),
-  setDeckConfig: (config: DeckConfig) =>
-    invoke<void>("set_deck_config", { config }),
+  getDeckConfig: (deckId: number) => invoke<DeckConfig>("get_deck_config", { deckId }),
+  setDeckConfig: (config: DeckConfig) => invoke<void>("set_deck_config", { config }),
 
   // Import
   importPackage: (path: string) => invoke<ImportSummary>("import_package", { path }),
@@ -67,12 +65,10 @@ export const ipc = {
     invoke<NotetypeDetail | null>("get_notetype", { notetypeId }),
   createNotetype: (name: string, kind: number) =>
     invoke<NotetypeDetail>("create_notetype", { name, kind }),
-  deleteNotetype: (notetypeId: number) =>
-    invoke<void>("delete_notetype", { notetypeId }),
+  deleteNotetype: (notetypeId: number) => invoke<void>("delete_notetype", { notetypeId }),
   renameNotetype: (notetypeId: number, name: string) =>
     invoke<void>("rename_notetype", { notetypeId, name }),
-  addField: (notetypeId: number, name: string) =>
-    invoke<void>("add_field", { notetypeId, name }),
+  addField: (notetypeId: number, name: string) => invoke<void>("add_field", { notetypeId, name }),
   checkFieldRemove: (notetypeId: number, ord: number) =>
     invoke<FieldRemoveWarning>("check_field_remove", { notetypeId, ord }),
   removeField: (notetypeId: number, ord: number) =>
@@ -108,11 +104,9 @@ export const ipc = {
 
   // Tag manager (M17)
   listTags: () => invoke<string[]>("list_tags"),
-  renameTag: (oldTag: string, newTag: string) =>
-    invoke<number>("rename_tag", { oldTag, newTag }),
+  renameTag: (oldTag: string, newTag: string) => invoke<number>("rename_tag", { oldTag, newTag }),
   deleteTag: (tag: string) => invoke<number>("delete_tag", { tag }),
-  mergeTags: (sources: string[], target: string) =>
-    invoke<void>("merge_tags", { sources, target }),
+  mergeTags: (sources: string[], target: string) => invoke<void>("merge_tags", { sources, target }),
 
   // Filtered decks (M17)
   createFilteredDeck: (name: string, search: string, order: number, limit: number) =>
@@ -126,7 +120,8 @@ export const ipc = {
   suspendCards: (cardIds: number[]) => invoke<void>("suspend_cards", { cardIds }),
   unsuspendCards: (cardIds: number[]) => invoke<void>("unsuspend_cards", { cardIds }),
   buryCards: (cardIds: number[]) => invoke<void>("bury_cards", { cardIds }),
-  setCardFlag: (cardIds: number[], flag: number) => invoke<void>("set_card_flag", { cardIds, flag }),
+  setCardFlag: (cardIds: number[], flag: number) =>
+    invoke<void>("set_card_flag", { cardIds, flag }),
 
   // Undo
   undo: () => invoke<string | null>("undo"),
@@ -139,8 +134,7 @@ export const ipc = {
   getStats: () => invoke<StatsDto>("get_stats"),
 
   // FSRS optimizer (M20)
-  optimizeFsrs: (deckId: number | null) =>
-    invoke<FsrsOptimizeResult>("optimize_fsrs", { deckId }),
+  optimizeFsrs: (deckId: number | null) => invoke<FsrsOptimizeResult>("optimize_fsrs", { deckId }),
   applyFsrsWeights: (deckId: number, weights: number[]) =>
     invoke<void>("apply_fsrs_weights", { deckId, weights }),
 
@@ -155,9 +149,11 @@ export const ipc = {
   createBackup: () => invoke<BackupInfo>("create_backup"),
   listBackups: () => invoke<BackupInfo[]>("list_backups"),
   restoreBackup: (name: string) => invoke<void>("restore_backup", { name }),
+  deleteBackup: (name: string) => invoke<void>("delete_backup", { name }),
   checkIntegrity: () => invoke<string[]>("check_integrity"),
   optimizeDb: () => invoke<void>("optimize_db"),
   checkMedia: () => invoke<MediaReport>("check_media"),
+  deleteOrphanMedia: (files: string[]) => invoke<number>("delete_orphan_media", { files }),
 };
 
 /**

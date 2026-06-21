@@ -111,12 +111,12 @@
   .synapse-card .cloze {
     @apply font-semibold text-primary underline decoration-dotted;
   }
-  /* Night-mode: invert rasterised card images, skip SVG/data: URIs. */
-  .dark .synapse-card img:not([src^="data:"]) {
-    filter: invert(0.85) hue-rotate(180deg);
-  }
   .synapse-type-input {
     @apply mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .synapse-flip {
+    perspective: 1200px;
   }
 
   /* TipTap field editor content. */

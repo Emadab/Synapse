@@ -38,8 +38,8 @@ pub fn write_apkg(
     // 3. Write the ZIP.
     let file = std::fs::File::create(dest_path).map_err(fmt)?;
     let mut zip = zip::ZipWriter::new(file);
-    let opts = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let opts =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
     // collection.anki2
     zip.start_file("collection.anki2", opts).map_err(fmt)?;
@@ -56,8 +56,12 @@ pub fn write_apkg(
     let media_count = media_files.len() as u32;
 
     zip.start_file("media", opts).map_err(fmt)?;
-    zip.write_all(serde_json::to_string(&Value::Object(index)).map_err(fmt)?.as_bytes())
-        .map_err(fmt)?;
+    zip.write_all(
+        serde_json::to_string(&Value::Object(index))
+            .map_err(fmt)?
+            .as_bytes(),
+    )
+    .map_err(fmt)?;
 
     zip.finish().map_err(fmt)?;
     Ok(media_count)
@@ -188,7 +192,14 @@ fn insert_col(conn: &Connection, model: &CanonicalModel) -> CoreResult<()> {
     conn.execute(
         "INSERT INTO col (id, crt, mod, scm, ver, dty, usn, ls, conf, models, decks, dconf, tags)
          VALUES (1, ?1, ?2, ?3, 11, 0, 0, 0, '{}', ?4, ?5, ?6, '{}')",
-        params![now_sec, now_sec, now_sec, models_json, decks_json, dconf_json],
+        params![
+            now_sec,
+            now_sec,
+            now_sec,
+            models_json,
+            decks_json,
+            dconf_json
+        ],
     )
     .map_err(fmt)?;
     Ok(())
@@ -327,7 +338,9 @@ fn build_dconf_json(model: &CanonicalModel) -> String {
                     }
                     v
                 }
-                Err(_) => json!({"id": cfg.id, "name": cfg.name, "mod": cfg.mod_ms / 1000, "usn": cfg.usn}),
+                Err(_) => {
+                    json!({"id": cfg.id, "name": cfg.name, "mod": cfg.mod_ms / 1000, "usn": cfg.usn})
+                }
             };
             map.insert(cfg.id.to_string(), entry);
         }
@@ -428,4 +441,3 @@ fn insert_revlog(conn: &Connection, revlog: &[Revlog]) -> CoreResult<()> {
     }
     Ok(())
 }
-

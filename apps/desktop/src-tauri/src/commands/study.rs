@@ -34,7 +34,9 @@ pub fn answer_card(
         message: format!("card {card_id}"),
     })?;
 
-    let config = collection.get_sched_config(card.deck_id).unwrap_or_default();
+    let config = collection
+        .get_sched_config(card.deck_id)
+        .unwrap_or_default();
     let leech_threshold = config.leech_threshold;
     let scheduler = scheduler_for(config.algorithm);
     let today = collection.today();
@@ -65,7 +67,14 @@ pub fn answer_card(
         taken_ms: 0,
         review_kind,
     };
-    collection.apply_answer(card_id, card.note_id, &outcome.next, due, &log, leech_threshold)?;
+    collection.apply_answer(
+        card_id,
+        card.note_id,
+        &outcome.next,
+        due,
+        &log,
+        leech_threshold,
+    )?;
 
     match collection.next_card(card.deck_id)? {
         Some(next) => Ok(Some(present(&collection, next))),
@@ -97,7 +106,9 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
         is_cloze: card.render.is_cloze,
     });
 
-    let config = collection.get_sched_config(card.deck_id).unwrap_or_default();
+    let config = collection
+        .get_sched_config(card.deck_id)
+        .unwrap_or_default();
     let algorithm = config.algorithm;
     let scheduler = scheduler_for(algorithm);
     let ctx = SchedContext {
@@ -105,8 +116,9 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
         config,
     };
     let previews = scheduler.preview(&card.state, &ctx);
-    let (new_count, learning_count, review_count) =
-        collection.count_due_by_type(card.deck_id).unwrap_or((0, 0, 0));
+    let (new_count, learning_count, review_count) = collection
+        .count_due_by_type(card.deck_id)
+        .unwrap_or((0, 0, 0));
 
     let card_phase = match card.state.phase {
         CardPhase::New => "new",
@@ -141,7 +153,8 @@ fn fuzz_days(days: u32, card_id: i64) -> u32 {
         return days;
     }
     // LCG-based deterministic fuzz seeded by card_id + days.
-    let seed = (card_id.unsigned_abs()).wrapping_mul(1_664_525)
+    let seed = (card_id.unsigned_abs())
+        .wrapping_mul(1_664_525)
         .wrapping_add(days as u64)
         .wrapping_add(1_013_904_223);
     let rng = ((seed >> 16) & 0xffff) as f64 / 65535.0; // [0, 1)

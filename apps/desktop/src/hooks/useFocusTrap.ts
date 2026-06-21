@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from "react";
 
 const FOCUSABLE =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), ' +
+  "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), " +
   'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
@@ -27,7 +27,10 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Tab") return;
       const nodes = focusable();
-      if (nodes.length === 0) { e.preventDefault(); return; }
+      if (nodes.length === 0) {
+        e.preventDefault();
+        return;
+      }
       const firstEl = nodes[0];
       const lastEl = nodes[nodes.length - 1];
       if (e.shiftKey) {

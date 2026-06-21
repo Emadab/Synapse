@@ -1,9 +1,7 @@
 //! Note-type editor commands: CRUD for note types, fields, and templates;
 //! template preview rendered via `synapse-render`.
 
-use synapse_core::ipc::{
-    FieldRemoveWarning, IpcError, NotetypeDetail, RenderedPreview,
-};
+use synapse_core::ipc::{FieldRemoveWarning, IpcError, NotetypeDetail, RenderedPreview};
 use synapse_core::Collection;
 use synapse_render::{RenderRequest, Template};
 use tauri::State;
@@ -28,10 +26,7 @@ pub fn create_notetype(
 }
 
 #[tauri::command]
-pub fn delete_notetype(
-    collection: State<'_, Collection>,
-    notetype_id: i64,
-) -> IpcResult<()> {
+pub fn delete_notetype(collection: State<'_, Collection>, notetype_id: i64) -> IpcResult<()> {
     Ok(collection.delete_notetype(notetype_id)?)
 }
 
@@ -166,4 +161,3 @@ pub fn preview_template(
         answer: rendered.answer,
     })
 }
-

@@ -6,9 +6,7 @@ pub mod canonical;
 pub mod entities;
 pub mod study;
 pub use canonical::{CanonicalModel, ImportSummary};
-pub use entities::{
-    Card, Deck, DeckConfig, Field, Note, NoteIndexRow, Notetype, Revlog, Template,
-};
+pub use entities::{Card, Deck, DeckConfig, Field, Note, NoteIndexRow, Notetype, Revlog, Template};
 pub use study::{CardRender, StudyCard};
 
 use serde::{Deserialize, Serialize};

@@ -36,7 +36,8 @@ export const en = {
   "study.sessionCap.prefix": "Study at most",
   "study.sessionCap.suffix": "cards this session (0 = no limit)",
   "study.done.title": "Session complete",
-  "study.done.description": "You've studied {{count}} cards this session. Come back later to keep going.",
+  "study.done.description":
+    "You've studied {{count}} cards this session. Come back later to keep going.",
   "study.backToDecks": "Back to decks",
   "study.suspend": "Suspend",
   "study.bury": "Bury",
@@ -56,7 +57,8 @@ export const en = {
   "settings.theme.dark": "Dark",
   "settings.theme.system": "System",
   "settings.scheduling.title": "Scheduling",
-  "settings.scheduling.description": "SM-2 and FSRS are both implemented and switchable per deck via deck options.",
+  "settings.scheduling.description":
+    "SM-2 and FSRS are both implemented and switchable per deck via deck options.",
   "settings.export.title": "Export",
   "settings.export.description": "Export your full collection as an Anki-compatible .apkg file.",
   "settings.export.button": "Export .apkg",

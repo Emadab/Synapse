@@ -14,14 +14,17 @@ use synapse_core::ipc::{
     FieldRemoveWarning, FilteredDeckConfig, NoteDetail, NoteOverview, NotetypeDetail, StatsDto,
 };
 use synapse_core::model::{
-    Card, CanonicalModel, Deck, Field, ImportSummary, Note, NoteIndexRow, Notetype, Revlog,
+    CanonicalModel, Card, Deck, Field, ImportSummary, Note, NoteIndexRow, Notetype, Revlog,
     StudyCard, Template,
 };
 use synapse_core::ports::{RemovedDeck, Storage};
 use synapse_core::scheduling::{CardState, SchedConfig};
 
 use crate::schema::grave_kind;
-use crate::{backup, browse, cards, export, filtered, import, migrations, notetype, search, stats, study, tags};
+use crate::{
+    backup, browse, cards, export, filtered, import, migrations, notetype, search, stats, study,
+    tags,
+};
 
 const DECK_COLUMNS: &str = r#"id, name, parent_id, config_id, "mod", usn, collapsed, is_filtered"#;
 const CARD_COLUMNS: &str = r#"id, note_id, deck_id, ord, "mod", usn, type, queue, due, interval,
@@ -308,7 +311,11 @@ impl Storage for SqliteStorage {
         }
 
         tx.commit().map_err(storage_err)?;
-        Ok(RemovedDeck { decks, cards, notes })
+        Ok(RemovedDeck {
+            decks,
+            cards,
+            notes,
+        })
     }
 
     fn restore_deck(&self, removed: &RemovedDeck) -> CoreResult<()> {
@@ -458,7 +465,14 @@ impl Storage for SqliteStorage {
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<synapse_core::ports::StudyQueue> {
-        study::study_queue(&self.lock(), deck_id, today, now_ms, new_limit, review_limit)
+        study::study_queue(
+            &self.lock(),
+            deck_id,
+            today,
+            now_ms,
+            new_limit,
+            review_limit,
+        )
     }
 
     fn count_due_by_type(
@@ -469,7 +483,14 @@ impl Storage for SqliteStorage {
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<(u32, u32, u32)> {
-        study::count_due_by_type(&self.lock(), deck_id, today, now_ms, new_limit, review_limit)
+        study::count_due_by_type(
+            &self.lock(),
+            deck_id,
+            today,
+            now_ms,
+            new_limit,
+            review_limit,
+        )
     }
 
     fn count_due(
@@ -480,10 +501,21 @@ impl Storage for SqliteStorage {
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<u32> {
-        study::count_due(&self.lock(), deck_id, today, now_ms, new_limit, review_limit)
+        study::count_due(
+            &self.lock(),
+            deck_id,
+            today,
+            now_ms,
+            new_limit,
+            review_limit,
+        )
     }
 
-    fn deck_due_counts(&self, today: i32, now_ms: i64) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
+    fn deck_due_counts(
+        &self,
+        today: i32,
+        now_ms: i64,
+    ) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
         study::deck_due_counts(&self.lock(), today, now_ms)
     }
 
@@ -722,7 +754,13 @@ impl Storage for SqliteStorage {
         cards::add_note_tag(&self.lock(), note_id, tag, now_ms)
     }
 
-    fn search_cards(&self, query: &str, today: i32, now_ms: i64, limit: i64) -> CoreResult<Vec<synapse_core::ipc::CardRow>> {
+    fn search_cards(
+        &self,
+        query: &str,
+        today: i32,
+        now_ms: i64,
+        limit: i64,
+    ) -> CoreResult<Vec<synapse_core::ipc::CardRow>> {
         search::search_cards(&self.lock(), query, today, now_ms, limit)
     }
 
@@ -794,7 +832,10 @@ impl Storage for SqliteStorage {
         backup::backup_db(&self.lock(), dest_path)
     }
 
-    fn revlogs_for_optimize(&self, deck_id: Option<i64>) -> CoreResult<Vec<synapse_core::model::Revlog>> {
+    fn revlogs_for_optimize(
+        &self,
+        deck_id: Option<i64>,
+    ) -> CoreResult<Vec<synapse_core::model::Revlog>> {
         stats::revlogs_for_optimize(&self.lock(), deck_id)
     }
 }
@@ -858,9 +899,7 @@ mod tests {
 
     #[test]
     fn remove_deck_cascades_to_cards_and_subdecks_then_undoes() {
-        use synapse_core::model::{
-            CanonicalModel, Card, Deck, Field, Note, Notetype, Template,
-        };
+        use synapse_core::model::{CanonicalModel, Card, Deck, Field, Note, Notetype, Template};
 
         let count = |s: &SqliteStorage, sql: &str| -> i64 {
             s.lock().query_row(sql, [], |r| r.get(0)).unwrap()
@@ -909,17 +948,64 @@ mod tests {
         // the seeded "Default" deck — so it must SURVIVE the delete.
         s.import(&CanonicalModel {
             decks: vec![
-                Deck { id: 2, name: "Med".into(), parent_id: None, config_id: 1, mod_ms: 0, usn: -1, collapsed: false, is_filtered: false },
-                Deck { id: 3, name: "Med::Anatomy".into(), parent_id: Some(2), config_id: 1, mod_ms: 0, usn: -1, collapsed: false, is_filtered: false },
+                Deck {
+                    id: 2,
+                    name: "Med".into(),
+                    parent_id: None,
+                    config_id: 1,
+                    mod_ms: 0,
+                    usn: -1,
+                    collapsed: false,
+                    is_filtered: false,
+                },
+                Deck {
+                    id: 3,
+                    name: "Med::Anatomy".into(),
+                    parent_id: Some(2),
+                    config_id: 1,
+                    mod_ms: 0,
+                    usn: -1,
+                    collapsed: false,
+                    is_filtered: false,
+                },
             ],
-            notetypes: vec![Notetype { id: 10, name: "Basic".into(), kind: 0, mod_ms: 0, usn: -1, config_json: "{}".into() }],
+            notetypes: vec![Notetype {
+                id: 10,
+                name: "Basic".into(),
+                kind: 0,
+                mod_ms: 0,
+                usn: -1,
+                config_json: "{}".into(),
+            }],
             fields: vec![
-                Field { notetype_id: 10, ord: 0, name: "Front".into(), config_json: "{}".into() },
-                Field { notetype_id: 10, ord: 1, name: "Back".into(), config_json: "{}".into() },
+                Field {
+                    notetype_id: 10,
+                    ord: 0,
+                    name: "Front".into(),
+                    config_json: "{}".into(),
+                },
+                Field {
+                    notetype_id: 10,
+                    ord: 1,
+                    name: "Back".into(),
+                    config_json: "{}".into(),
+                },
             ],
-            templates: vec![Template { notetype_id: 10, ord: 0, name: "Card 1".into(), qfmt: "{{Front}}".into(), afmt: "{{Back}}".into(), config_json: "{}".into() }],
+            templates: vec![Template {
+                notetype_id: 10,
+                ord: 0,
+                name: "Card 1".into(),
+                qfmt: "{{Front}}".into(),
+                afmt: "{{Back}}".into(),
+                config_json: "{}".into(),
+            }],
             notes: vec![note(100, "g1"), note(101, "g2"), note(102, "g3")],
-            cards: vec![card(100, 2, 0), card(101, 3, 0), card(102, 2, 0), card(102, 1, 1)],
+            cards: vec![
+                card(100, 2, 0),
+                card(101, 3, 0),
+                card(102, 2, 0),
+                card(102, 1, 1),
+            ],
             ..Default::default()
         })
         .unwrap();

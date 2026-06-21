@@ -19,7 +19,10 @@ fn bump_schema_mod(conn: &Connection, now_ms: i64) -> CoreResult<()> {
     Ok(())
 }
 
-pub fn get_notetype_detail(conn: &Connection, notetype_id: i64) -> CoreResult<Option<NotetypeDetail>> {
+pub fn get_notetype_detail(
+    conn: &Connection,
+    notetype_id: i64,
+) -> CoreResult<Option<NotetypeDetail>> {
     let row = conn
         .query_row(
             "SELECT id, name, kind FROM notetypes WHERE id = ?1",
@@ -71,10 +74,21 @@ pub fn get_notetype_detail(conn: &Connection, notetype_id: i64) -> CoreResult<Op
         .collect::<rusqlite::Result<_>>()
         .map_err(err)?;
 
-    Ok(Some(NotetypeDetail { id, name, kind, fields, templates }))
+    Ok(Some(NotetypeDetail {
+        id,
+        name,
+        kind,
+        fields,
+        templates,
+    }))
 }
 
-pub fn create_notetype(tx: &Transaction<'_>, name: &str, kind: i64, now_ms: i64) -> CoreResult<i64> {
+pub fn create_notetype(
+    tx: &Transaction<'_>,
+    name: &str,
+    kind: i64,
+    now_ms: i64,
+) -> CoreResult<i64> {
     tx.execute(
         r#"INSERT INTO notetypes (name, kind, "mod", usn, config) VALUES (?1, ?2, ?3, -1, '{}')"#,
         params![name, kind, now_ms],
@@ -150,7 +164,12 @@ pub fn delete_notetype(tx: &Transaction<'_>, notetype_id: i64, now_ms: i64) -> C
     Ok(())
 }
 
-pub fn rename_notetype(conn: &Connection, notetype_id: i64, name: &str, now_ms: i64) -> CoreResult<()> {
+pub fn rename_notetype(
+    conn: &Connection,
+    notetype_id: i64,
+    name: &str,
+    now_ms: i64,
+) -> CoreResult<()> {
     let affected = conn
         .execute(
             r#"UPDATE notetypes SET name = ?1, "mod" = ?2, usn = -1 WHERE id = ?3"#,
@@ -163,7 +182,12 @@ pub fn rename_notetype(conn: &Connection, notetype_id: i64, name: &str, now_ms: 
     Ok(())
 }
 
-pub fn add_field(tx: &Transaction<'_>, notetype_id: i64, name: &str, now_ms: i64) -> CoreResult<()> {
+pub fn add_field(
+    tx: &Transaction<'_>,
+    notetype_id: i64,
+    name: &str,
+    now_ms: i64,
+) -> CoreResult<()> {
     let next_ord: i64 = tx
         .query_row(
             "SELECT COALESCE(MAX(ord) + 1, 0) FROM fields WHERE notetype_id = ?1",
@@ -201,7 +225,11 @@ pub fn add_field(tx: &Transaction<'_>, notetype_id: i64, name: &str, now_ms: i64
     Ok(())
 }
 
-pub fn check_field_remove(conn: &Connection, notetype_id: i64, ord: i64) -> CoreResult<FieldRemoveWarning> {
+pub fn check_field_remove(
+    conn: &Connection,
+    notetype_id: i64,
+    ord: i64,
+) -> CoreResult<FieldRemoveWarning> {
     let mut stmt = conn
         .prepare("SELECT fields FROM notes WHERE notetype_id = ?1")
         .map_err(err)?;
@@ -216,14 +244,24 @@ pub fn check_field_remove(conn: &Connection, notetype_id: i64, ord: i64) -> Core
         .iter()
         .filter(|blob| {
             let parts: Vec<&str> = blob.split(FIELD_SEP).collect();
-            parts.get(ord_idx).map(|v| !v.trim().is_empty()).unwrap_or(false)
+            parts
+                .get(ord_idx)
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false)
         })
         .count();
 
-    Ok(FieldRemoveWarning { notes_with_content: count as u32 })
+    Ok(FieldRemoveWarning {
+        notes_with_content: count as u32,
+    })
 }
 
-pub fn remove_field(tx: &Transaction<'_>, notetype_id: i64, ord: i64, now_ms: i64) -> CoreResult<()> {
+pub fn remove_field(
+    tx: &Transaction<'_>,
+    notetype_id: i64,
+    ord: i64,
+    now_ms: i64,
+) -> CoreResult<()> {
     let field_count: i64 = tx
         .query_row(
             "SELECT COUNT(*) FROM fields WHERE notetype_id = ?1",
@@ -334,11 +372,8 @@ pub fn reorder_fields(
     }
 
     // Rebuild the fields table in the new order.
-    tx.execute(
-        "DELETE FROM fields WHERE notetype_id = ?1",
-        [notetype_id],
-    )
-    .map_err(err)?;
+    tx.execute("DELETE FROM fields WHERE notetype_id = ?1", [notetype_id])
+        .map_err(err)?;
     for (new_ord, &old_ord) in new_order.iter().enumerate() {
         let (ref name, ref config) = old_fields[old_ord as usize];
         tx.execute(
@@ -569,8 +604,18 @@ mod tests {
                 config_json: "{}".into(),
             }],
             fields: vec![
-                Field { notetype_id: 10, ord: 0, name: "Front".into(), config_json: "{}".into() },
-                Field { notetype_id: 10, ord: 1, name: "Back".into(), config_json: "{}".into() },
+                Field {
+                    notetype_id: 10,
+                    ord: 0,
+                    name: "Front".into(),
+                    config_json: "{}".into(),
+                },
+                Field {
+                    notetype_id: 10,
+                    ord: 1,
+                    name: "Back".into(),
+                    config_json: "{}".into(),
+                },
             ],
             templates: vec![Template {
                 notetype_id: 10,
@@ -749,7 +794,8 @@ mod tests {
     fn add_template_generates_new_cards() {
         let Setup { s, nt_id, .. } = setup();
         let before = card_count(&s);
-        s.add_template(nt_id, "Card 2", "{{Back}}", "{{Front}}", 1_000).unwrap();
+        s.add_template(nt_id, "Card 2", "{{Back}}", "{{Front}}", 1_000)
+            .unwrap();
         assert_eq!(card_count(&s), before + 1);
 
         let detail = s.get_notetype_detail(nt_id).unwrap().unwrap();
@@ -759,7 +805,8 @@ mod tests {
     #[test]
     fn remove_template_deletes_cards_and_shifts_ords() {
         let Setup { s, nt_id, .. } = setup();
-        s.add_template(nt_id, "Card 2", "{{Back}}", "{{Front}}", 1_000).unwrap();
+        s.add_template(nt_id, "Card 2", "{{Back}}", "{{Front}}", 1_000)
+            .unwrap();
         assert_eq!(card_count(&s), 2);
 
         s.remove_template(nt_id, 0, 2_000).unwrap(); // remove Card 1
@@ -779,7 +826,8 @@ mod tests {
     #[test]
     fn save_template_updates_formats() {
         let Setup { s, nt_id, .. } = setup();
-        s.save_template(nt_id, 0, "Updated", "{{Back}}", "{{Front}}", 1_000).unwrap();
+        s.save_template(nt_id, 0, "Updated", "{{Back}}", "{{Front}}", 1_000)
+            .unwrap();
         let detail = s.get_notetype_detail(nt_id).unwrap().unwrap();
         assert_eq!(detail.templates[0].name, "Updated");
         assert_eq!(detail.templates[0].qfmt, "{{Back}}");

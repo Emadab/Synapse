@@ -60,12 +60,18 @@ function FilteredDeckDialog({
 
   const createMut = useMutation({
     mutationFn: () => ipc.createFilteredDeck(name.trim(), search.trim(), order, limit),
-    onSuccess: () => { onSaved(); onClose(); },
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
   });
 
   const rebuildMut = useMutation({
     mutationFn: () => ipc.rebuildFiltered(initial!.deck_id),
-    onSuccess: () => { onSaved(); onClose(); },
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
   });
 
   const isRebuild = !!initial;
@@ -128,7 +134,9 @@ function FilteredDeckDialog({
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {ORDER_LABELS.map((label, i) => (
-                  <option key={i} value={i}>{label}</option>
+                  <option key={i} value={i}>
+                    {label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -146,16 +154,16 @@ function FilteredDeckDialog({
           </div>
         </div>
 
-        {error && (
-          <p className="mt-3 text-sm text-destructive">{errorMessage(error)}</p>
-        )}
+        {error && <p className="mt-3 text-sm text-destructive">{errorMessage(error)}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
           <Button
             size="sm"
             disabled={isPending || !search.trim() || (!isRebuild && !name.trim())}
-            onClick={() => isRebuild ? rebuildMut.mutate() : createMut.mutate()}
+            onClick={() => (isRebuild ? rebuildMut.mutate() : createMut.mutate())}
           >
             <RefreshCw className="size-3.5" />
             {isPending ? "Building…" : isRebuild ? "Rebuild" : "Create"}
@@ -302,7 +310,10 @@ export function DeckBrowserScreen() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => { setCreating(false); setName(""); }}
+                onClick={() => {
+                  setCreating(false);
+                  setName("");
+                }}
               >
                 Cancel
               </Button>
@@ -365,7 +376,9 @@ export function DeckBrowserScreen() {
                   ) : (
                     <Layers className="size-4 shrink-0 text-muted-foreground" />
                   )}
-                  <span className="flex-1 truncate text-sm font-medium">{deckLabel(deck.name)}</span>
+                  <span className="flex-1 truncate text-sm font-medium">
+                    {deckLabel(deck.name)}
+                  </span>
                   {deck.is_filtered && (
                     <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
                       filtered
@@ -436,7 +449,6 @@ export function DeckBrowserScreen() {
             </AnimatePresence>
           </motion.ul>
         )}
-
       </div>
 
       {/* Delete confirmation dialog */}

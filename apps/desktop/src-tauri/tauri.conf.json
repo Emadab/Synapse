@@ -18,7 +18,9 @@
         "minWidth": 800,
         "minHeight": 560,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {
@@ -33,14 +35,12 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon-white.ico"
     ]
   },
   "plugins": {
     "updater": {
-      "endpoints": [
-        "https://github.com/synapse-srs/synapse/releases/latest/download/latest.json"
-      ],
+      "endpoints": ["https://github.com/synapse-srs/synapse/releases/latest/download/latest.json"],
       "dialog": false,
       "pubkey": "REPLACE_WITH_OUTPUT_OF_pnpm_tauri_signer_generate"
     }

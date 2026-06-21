@@ -7,9 +7,9 @@
 mod commands;
 
 use std::sync::{Arc, Mutex};
-use tracing_subscriber::{fmt, EnvFilter};
 use synapse_db::backup as db_backup;
 use synapse_plugin::PluginManager;
+use tracing_subscriber::{fmt, EnvFilter};
 
 use percent_encoding::percent_decode_str;
 use synapse_core::{Collection, DomainEvent, SystemClock};
@@ -79,9 +79,7 @@ pub fn run() {
             // Only the last path component is used (no traversal).
             let uri = request.uri();
             let encoded = uri.path().trim_start_matches('/');
-            let decoded = percent_decode_str(encoded)
-                .decode_utf8_lossy()
-                .into_owned();
+            let decoded = percent_decode_str(encoded).decode_utf8_lossy().into_owned();
             let filename = std::path::Path::new(&decoded)
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -248,9 +246,11 @@ pub fn run() {
             commands::maintenance::create_backup,
             commands::maintenance::list_backups,
             commands::maintenance::restore_backup,
+            commands::maintenance::delete_backup,
             commands::maintenance::check_integrity,
             commands::maintenance::optimize_db,
             commands::maintenance::check_media,
+            commands::maintenance::delete_orphan_media,
             commands::optimize::optimize_fsrs,
             commands::optimize::apply_fsrs_weights,
             commands::plugins::list_plugins,

@@ -79,7 +79,9 @@ fn dump_notetypes(conn: &Connection) -> CoreResult<Vec<Notetype>> {
                 kind: r.get(2)?,
                 mod_ms: r.get::<_, i64>(3)?,
                 usn: r.get(4)?,
-                config_json: r.get::<_, Option<String>>(5)?.unwrap_or_else(|| "{}".into()),
+                config_json: r
+                    .get::<_, Option<String>>(5)?
+                    .unwrap_or_else(|| "{}".into()),
             })
         })
         .map_err(err)?;
@@ -96,7 +98,9 @@ fn dump_fields(conn: &Connection) -> CoreResult<Vec<Field>> {
                 notetype_id: r.get(0)?,
                 ord: r.get(1)?,
                 name: r.get(2)?,
-                config_json: r.get::<_, Option<String>>(3)?.unwrap_or_else(|| "{}".into()),
+                config_json: r
+                    .get::<_, Option<String>>(3)?
+                    .unwrap_or_else(|| "{}".into()),
             })
         })
         .map_err(err)?;
@@ -118,7 +122,9 @@ fn dump_templates(conn: &Connection) -> CoreResult<Vec<Template>> {
                 name: r.get(2)?,
                 qfmt: r.get(3)?,
                 afmt: r.get(4)?,
-                config_json: r.get::<_, Option<String>>(5)?.unwrap_or_else(|| "{}".into()),
+                config_json: r
+                    .get::<_, Option<String>>(5)?
+                    .unwrap_or_else(|| "{}".into()),
             })
         })
         .map_err(err)?;

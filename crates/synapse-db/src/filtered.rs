@@ -71,7 +71,11 @@ pub fn create_filtered_deck(
     today: i32,
     now_ms: i64,
 ) -> CoreResult<Deck> {
-    let cfg = FilteredJson { search: search_query.to_string(), order, limit };
+    let cfg = FilteredJson {
+        search: search_query.to_string(),
+        order,
+        limit,
+    };
     let cfg_json = serde_json::to_string(&cfg).map_err(err)?;
     let id = now_ms;
     conn.execute(
@@ -100,9 +104,8 @@ pub fn rebuild_filtered(
     today: i32,
     now_ms: i64,
 ) -> CoreResult<u32> {
-    let (_, cfg) = read_config(conn, deck_id)?.ok_or_else(|| {
-        CoreError::NotFound(format!("filtered deck {deck_id}"))
-    })?;
+    let (_, cfg) = read_config(conn, deck_id)?
+        .ok_or_else(|| CoreError::NotFound(format!("filtered deck {deck_id}")))?;
     empty_filtered(conn, deck_id, now_ms)?;
     gather_cards(conn, deck_id, &cfg.search, cfg.limit, today, now_ms)
 }
@@ -287,7 +290,9 @@ mod tests {
 
         let deck_id: i64 = s
             .lock()
-            .query_row("SELECT deck_id FROM cards WHERE id = ?1", [card_id], |r| r.get(0))
+            .query_row("SELECT deck_id FROM cards WHERE id = ?1", [card_id], |r| {
+                r.get(0)
+            })
             .unwrap();
         // Card should NOT have been gathered (suspended).
         // Note: search may filter it via queue check in gather_cards.

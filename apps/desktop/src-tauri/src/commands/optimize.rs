@@ -9,7 +9,10 @@ use tauri::State;
 type IpcResult<T> = Result<T, IpcError>;
 
 fn sched_err(msg: impl std::fmt::Display) -> IpcError {
-    IpcError { kind: IpcErrorKind::Scheduler, message: msg.to_string() }
+    IpcError {
+        kind: IpcErrorKind::Scheduler,
+        message: msg.to_string(),
+    }
 }
 
 /// Run the FSRS-6 weight optimizer on the collection's review history.

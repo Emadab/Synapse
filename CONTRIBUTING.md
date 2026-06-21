@@ -2,11 +2,11 @@
 
 ## Prerequisites
 
-| Tool | Version |
-|------|---------|
-| Rust | stable (1.78+) |
-| Node.js | 20 LTS |
-| pnpm | 9+ |
+| Tool      | Version                        |
+| --------- | ------------------------------ |
+| Rust      | stable (1.78+)                 |
+| Node.js   | 20 LTS                         |
+| pnpm      | 9+                             |
 | Tauri CLI | v2 (`cargo install tauri-cli`) |
 
 ## Setup
@@ -90,6 +90,7 @@ docs: ADR-003 plugin sandbox decision
 ## Reporting issues
 
 Open an issue at https://github.com/synapse-srs/synapse/issues with:
+
 - OS + version
 - Steps to reproduce
 - Expected vs actual behaviour

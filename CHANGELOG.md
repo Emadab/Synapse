@@ -7,6 +7,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+
 - M21: Plugin runtime — sandboxed Worker-based JS plugins with capability enforcement
 - M20: FSRS weight optimizer — Adam gradient descent on review history, per-deck or full-collection scope
 - M19: Backups, integrity check, DB optimize, media consistency scan, panic hook, auto-backup on startup

@@ -108,7 +108,10 @@ impl PluginManifest {
     }
 
     pub fn permission_strings(&self) -> Vec<String> {
-        self.permissions.iter().map(|c| c.as_str().to_string()).collect()
+        self.permissions
+            .iter()
+            .map(|c| c.as_str().to_string())
+            .collect()
     }
 }
 
@@ -177,7 +180,11 @@ impl PluginManager {
             match PluginManifest::from_dir(&path) {
                 Ok(manifest) => {
                     let enabled = state.enabled.contains(&manifest.id);
-                    records.push(PluginRecord { enabled, install_path: path, manifest });
+                    records.push(PluginRecord {
+                        enabled,
+                        install_path: path,
+                        manifest,
+                    });
                 }
                 Err(e) => {
                     tracing::warn!("skipping plugin dir {:?}: {e}", path);
@@ -195,7 +202,11 @@ impl PluginManager {
         let dest = self.installed_dir.join(&manifest.id);
         std::fs::create_dir_all(&dest)?;
         copy_dir_all(src_dir, &dest)?;
-        Ok(PluginRecord { enabled: false, install_path: dest, manifest })
+        Ok(PluginRecord {
+            enabled: false,
+            install_path: dest,
+            manifest,
+        })
     }
 
     /// Install the bundled word-count sample plugin (no-op if already installed).
@@ -289,7 +300,11 @@ mod tests {
         let dir = parent.join("test-plugin");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("plugin.json"), manifest).unwrap();
-        fs::write(dir.join("index.js"), "SynapsePlugin.registerCommand('x', 'X');").unwrap();
+        fs::write(
+            dir.join("index.js"),
+            "SynapsePlugin.registerCommand('x', 'X');",
+        )
+        .unwrap();
         dir
     }
 
@@ -314,10 +329,7 @@ mod tests {
             m.permissions,
             vec![Capability::UiCommand, Capability::EventsListen]
         );
-        assert_eq!(
-            m.permission_strings(),
-            vec!["ui:command", "events:listen"]
-        );
+        assert_eq!(m.permission_strings(), vec!["ui:command", "events:listen"]);
     }
 
     #[test]
@@ -334,12 +346,16 @@ mod tests {
         // Enable → list shows enabled
         mgr.enable("test-plugin").unwrap();
         let records = mgr.list().unwrap();
-        assert!(records.iter().any(|r| r.manifest.id == "test-plugin" && r.enabled));
+        assert!(records
+            .iter()
+            .any(|r| r.manifest.id == "test-plugin" && r.enabled));
 
         // Disable → back to disabled
         mgr.disable("test-plugin").unwrap();
         let records = mgr.list().unwrap();
-        assert!(records.iter().any(|r| r.manifest.id == "test-plugin" && !r.enabled));
+        assert!(records
+            .iter()
+            .any(|r| r.manifest.id == "test-plugin" && !r.enabled));
     }
 
     #[test]

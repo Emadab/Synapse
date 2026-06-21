@@ -79,7 +79,7 @@ jobs:
           Remove-Item $certPath
 
       - run: pnpm install --frozen-lockfile
-      - run: cargo test -p synapse-core  # regenerate ts-rs bindings
+      - run: cargo test -p synapse-core # regenerate ts-rs bindings
 
       - name: Build and sign Tauri bundle
         uses: tauri-apps/tauri-action@v0

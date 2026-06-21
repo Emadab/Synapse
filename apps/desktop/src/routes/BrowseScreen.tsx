@@ -27,11 +27,11 @@ const plain = (html: string) => html.replace(/<[^>]*>/g, "");
 
 const QUEUE_LABELS: Record<number, { text: string; cls: string }> = {
   "-3": { text: "Sibling", cls: "text-muted-foreground" },
-  "-2": { text: "Buried",  cls: "text-amber-600 dark:text-amber-400" },
+  "-2": { text: "Buried", cls: "text-amber-600 dark:text-amber-400" },
   "-1": { text: "Suspended", cls: "text-red-500" },
-  0:    { text: "New",    cls: "text-blue-600 dark:text-blue-400" },
-  1:    { text: "Learn",  cls: "text-amber-600 dark:text-amber-400" },
-  2:    { text: "Review", cls: "text-green-600 dark:text-green-400" },
+  0: { text: "New", cls: "text-blue-600 dark:text-blue-400" },
+  1: { text: "Learn", cls: "text-amber-600 dark:text-amber-400" },
+  2: { text: "Review", cls: "text-green-600 dark:text-green-400" },
 };
 
 const FLAG_COLORS: Record<number, string> = {
@@ -69,11 +69,7 @@ const QUERY_SYNTAX = `Syntax help:
 
 // ── tag sidebar ───────────────────────────────────────────────────────────────
 
-function TagSidebar({
-  onFilter,
-}: {
-  onFilter: (tag: string) => void;
-}) {
+function TagSidebar({ onFilter }: { onFilter: (tag: string) => void }) {
   const queryClient = useQueryClient();
   const tagsQuery = useQuery({ queryKey: ["tags"], queryFn: ipc.listTags });
   const tags = tagsQuery.data ?? [];
@@ -82,8 +78,7 @@ function TagSidebar({
   const [renameValue, setRenameValue] = useState("");
 
   const renameMut = useMutation({
-    mutationFn: ({ old, next }: { old: string; next: string }) =>
-      ipc.renameTag(old, next),
+    mutationFn: ({ old, next }: { old: string; next: string }) => ipc.renameTag(old, next),
     onSuccess: () => {
       setRenaming(null);
       void queryClient.invalidateQueries({ queryKey: ["tags"] });
@@ -127,12 +122,18 @@ function TagSidebar({
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
                     className="h-6 flex-1 rounded border border-input bg-background px-1.5 text-xs outline-none focus:ring-1 focus:ring-ring"
-                    onKeyDown={(e) => { if (e.key === "Escape") setRenaming(null); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setRenaming(null);
+                    }}
                   />
                   <button type="submit" className="text-primary hover:opacity-70">
                     <Save className="size-3" />
                   </button>
-                  <button type="button" onClick={() => setRenaming(null)} className="text-muted-foreground hover:opacity-70">
+                  <button
+                    type="button"
+                    onClick={() => setRenaming(null)}
+                    className="text-muted-foreground hover:opacity-70"
+                  >
                     <X className="size-3" />
                   </button>
                 </form>
@@ -147,7 +148,10 @@ function TagSidebar({
                   </button>
                   <button
                     className="hidden group-hover:inline-flex text-muted-foreground hover:text-foreground"
-                    onClick={() => { setRenaming(tag); setRenameValue(tag); }}
+                    onClick={() => {
+                      setRenaming(tag);
+                      setRenameValue(tag);
+                    }}
                     title="Rename"
                   >
                     <Pencil className="size-3" />
@@ -205,29 +209,46 @@ export function BrowseScreen() {
 
   const deleteMut = useMutation({
     mutationFn: (noteIds: number[]) => ipc.deleteNotes(noteIds),
-    onSuccess: () => { setSelected(new Set()); void invalidate(); },
+    onSuccess: () => {
+      setSelected(new Set());
+      void invalidate();
+    },
   });
 
   const suspendMut = useMutation({
     mutationFn: (cardIds: number[]) => ipc.suspendCards(cardIds),
-    onSuccess: () => { setSelected(new Set()); void invalidate(); },
+    onSuccess: () => {
+      setSelected(new Set());
+      void invalidate();
+    },
   });
 
   const buryMut = useMutation({
     mutationFn: (cardIds: number[]) => ipc.buryCards(cardIds),
-    onSuccess: () => { setSelected(new Set()); void invalidate(); },
+    onSuccess: () => {
+      setSelected(new Set());
+      void invalidate();
+    },
   });
 
   const addTagMut = useMutation({
     mutationFn: ({ noteIds, tag }: { noteIds: number[]; tag: string }) =>
       ipc.bulkAddTag(noteIds, tag),
-    onSuccess: () => { setBulkTag(""); setBulkAction(null); void invalidate(); },
+    onSuccess: () => {
+      setBulkTag("");
+      setBulkAction(null);
+      void invalidate();
+    },
   });
 
   const removeTagMut = useMutation({
     mutationFn: ({ noteIds, tag }: { noteIds: number[]; tag: string }) =>
       ipc.bulkRemoveTag(noteIds, tag),
-    onSuccess: () => { setBulkTag(""); setBulkAction(null); void invalidate(); },
+    onSuccess: () => {
+      setBulkTag("");
+      setBulkAction(null);
+      void invalidate();
+    },
   });
 
   const moveDeckMut = useMutation({
@@ -237,7 +258,11 @@ export function BrowseScreen() {
       if (!deck) throw new Error(`Deck "${deckName}" not found`);
       return ipc.moveCardsToDeck(cardIds, deck.id);
     },
-    onSuccess: () => { setDeckInput(""); setBulkAction(null); void invalidate(); },
+    onSuccess: () => {
+      setDeckInput("");
+      setBulkAction(null);
+      void invalidate();
+    },
   });
 
   // Keyboard: Ctrl+A selects all.
@@ -258,7 +283,10 @@ export function BrowseScreen() {
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortAsc((a) => !a);
-    else { setSortKey(key); setSortAsc(true); }
+    else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
   }
 
   function handleRowClick(row: CardRow, idx: number, e: React.MouseEvent) {
@@ -319,12 +347,16 @@ export function BrowseScreen() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") setSubmitted(query); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setSubmitted(query);
+            }}
             placeholder={`Search cards… (Enter to run)  e.g. is:due tag:verb`}
             className="h-9 w-full rounded-md bg-secondary pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
-        <Button size="sm" onClick={() => setSubmitted(query)}>Search</Button>
+        <Button size="sm" onClick={() => setSubmitted(query)}>
+          Search
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -378,7 +410,9 @@ export function BrowseScreen() {
                       type="checkbox"
                       checked={selArray.length === sorted.length && sorted.length > 0}
                       onChange={(e) =>
-                        setSelected(e.target.checked ? new Set(sorted.map((r) => r.card_id)) : new Set())
+                        setSelected(
+                          e.target.checked ? new Set(sorted.map((r) => r.card_id)) : new Set(),
+                        )
                       }
                       className="cursor-pointer"
                     />
@@ -437,7 +471,11 @@ export function BrowseScreen() {
                         {qInfo.text}
                       </td>
                       <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground tabular-nums">
-                        {row.queue === 0 ? `pos ${row.due}` : row.queue === 1 ? "soon" : `${row.due}d`}
+                        {row.queue === 0
+                          ? `pos ${row.due}`
+                          : row.queue === 1
+                            ? "soon"
+                            : `${row.due}d`}
                       </td>
                       <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground tabular-nums">
                         {row.interval > 0 ? `${row.interval}d` : "—"}
@@ -476,9 +514,7 @@ export function BrowseScreen() {
           ref={bulkRef}
           className="flex flex-wrap items-center gap-2 border-t border-border bg-secondary/60 px-4 py-2"
         >
-          <span className="text-sm font-medium">
-            {selArray.length} selected
-          </span>
+          <span className="text-sm font-medium">{selArray.length} selected</span>
           <Button
             variant="outline"
             size="sm"
@@ -532,7 +568,10 @@ export function BrowseScreen() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { setSelected(new Set()); setBulkAction(null); }}
+            onClick={() => {
+              setSelected(new Set());
+              setBulkAction(null);
+            }}
           >
             Clear
           </Button>
@@ -579,7 +618,12 @@ export function BrowseScreen() {
                 placeholder="Deck name"
                 className="h-7 w-40 rounded border border-input bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
               />
-              <Button type="submit" size="sm" className="h-7 text-xs" disabled={moveDeckMut.isPending}>
+              <Button
+                type="submit"
+                size="sm"
+                className="h-7 text-xs"
+                disabled={moveDeckMut.isPending}
+              >
                 Move
               </Button>
               {moveDeckMut.isError && (

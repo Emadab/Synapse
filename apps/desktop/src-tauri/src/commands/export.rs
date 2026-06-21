@@ -9,7 +9,10 @@ use tauri::{Manager, State};
 type IpcResult<T> = Result<T, IpcError>;
 
 fn ipc_err(msg: impl std::fmt::Display) -> IpcError {
-    IpcError { kind: IpcErrorKind::Internal, message: msg.to_string() }
+    IpcError {
+        kind: IpcErrorKind::Internal,
+        message: msg.to_string(),
+    }
 }
 
 /// Export the collection to the given path as an .apkg file.
@@ -28,14 +31,14 @@ pub fn export_package(
         .map_err(ipc_err)?
         .join("collection.media");
 
-    let media_dir = if media_dir.is_dir() { Some(media_dir) } else { None };
+    let media_dir = if media_dir.is_dir() {
+        Some(media_dir)
+    } else {
+        None
+    };
 
-    let count = synapse_ankifmt::write_apkg(
-        &model,
-        Path::new(&path),
-        media_dir.as_deref(),
-    )
-    .map_err(ipc_err)?;
+    let count = synapse_ankifmt::write_apkg(&model, Path::new(&path), media_dir.as_deref())
+        .map_err(ipc_err)?;
 
     Ok(count)
 }

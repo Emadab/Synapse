@@ -12,7 +12,10 @@ function MaintenanceSection() {
   const [backupMsg, setBackupMsg] = useState<string>("");
   const [integrityResult, setIntegrityResult] = useState<string[]>([]);
   const [optimizeMsg, setOptimizeMsg] = useState<string>("");
-  const [mediaResult, setMediaResult] = useState<{ orphan_files: string[]; missing_files: string[] } | null>(null);
+  const [mediaResult, setMediaResult] = useState<{
+    orphan_files: string[];
+    missing_files: string[];
+  } | null>(null);
   const [deleteOrphanConfirm, setDeleteOrphanConfirm] = useState(false);
   const [restoreConfirm, setRestoreConfirm] = useState<string | null>(null);
 
@@ -67,7 +70,7 @@ function MaintenanceSection() {
     mutationFn: (files: string[]) => ipc.deleteOrphanMedia(files),
     onSuccess: (count) => {
       setDeleteOrphanConfirm(false);
-      setMediaResult((prev) => prev ? { ...prev, orphan_files: [] } : prev);
+      setMediaResult((prev) => (prev ? { ...prev, orphan_files: [] } : prev));
       setOptimizeMsg(`Deleted ${count} orphan file${count === 1 ? "" : "s"}.`);
     },
     onError: (e) => {
@@ -76,7 +79,14 @@ function MaintenanceSection() {
     },
   });
 
-  const busy = backupMut.isPending || restoreMut.isPending || deleteBackupMut.isPending || integrityMut.isPending || optimizeMut.isPending || mediaMut.isPending || deleteOrphanMut.isPending;
+  const busy =
+    backupMut.isPending ||
+    restoreMut.isPending ||
+    deleteBackupMut.isPending ||
+    integrityMut.isPending ||
+    optimizeMut.isPending ||
+    mediaMut.isPending ||
+    deleteOrphanMut.isPending;
 
   return (
     <section className="mt-8 max-w-xl space-y-6">
@@ -88,23 +98,18 @@ function MaintenanceSection() {
       {/* Backups */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => backupMut.mutate()}
-          >
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => backupMut.mutate()}>
             {backupMut.isPending ? "Backing up…" : "Backup now"}
           </Button>
-          {backupMsg && (
-            <span className="text-sm text-muted-foreground">{backupMsg}</span>
-          )}
+          {backupMsg && <span className="text-sm text-muted-foreground">{backupMsg}</span>}
         </div>
         {(backupsQuery.data ?? []).length > 0 && (
           <ul className="rounded-lg border border-border divide-y divide-border text-sm">
             {(backupsQuery.data ?? []).map((b: BackupInfo) => (
               <li key={b.name} className="flex items-center justify-between px-3 py-2 gap-2">
-                <span className="text-muted-foreground tabular-nums text-xs">{fmt_date(b.created_ms)}</span>
+                <span className="text-muted-foreground tabular-nums text-xs">
+                  {fmt_date(b.created_ms)}
+                </span>
                 <span className="text-xs text-muted-foreground">{fmt_size(b.size_bytes)}</span>
                 <Button
                   size="sm"
@@ -130,11 +135,10 @@ function MaintenanceSection() {
         )}
         {restoreConfirm && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 space-y-2 text-sm">
-            <p className="font-medium text-destructive">
-              Restore backup "{restoreConfirm}"?
-            </p>
+            <p className="font-medium text-destructive">Restore backup "{restoreConfirm}"?</p>
             <p className="text-muted-foreground text-xs">
-              This overwrites your current collection. Restart the app after restoring. This cannot be undone.
+              This overwrites your current collection. Restart the app after restoring. This cannot
+              be undone.
             </p>
             <div className="flex gap-2">
               <Button
@@ -165,7 +169,9 @@ function MaintenanceSection() {
         </div>
         {integrityResult.length > 0 && (
           <ul className="text-sm text-destructive space-y-0.5">
-            {integrityResult.map((e, i) => <li key={i}>{e}</li>)}
+            {integrityResult.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
           </ul>
         )}
       </div>
@@ -184,67 +190,86 @@ function MaintenanceSection() {
           <Button size="sm" variant="outline" disabled={busy} onClick={() => mediaMut.mutate()}>
             {mediaMut.isPending ? "Scanning…" : "Check media"}
           </Button>
-          {mediaResult && mediaResult.orphan_files.length === 0 && mediaResult.missing_files.length === 0 && (
-            <span className="text-sm text-green-600 dark:text-green-400">All media files are consistent.</span>
-          )}
+          {mediaResult &&
+            mediaResult.orphan_files.length === 0 &&
+            mediaResult.missing_files.length === 0 && (
+              <span className="text-sm text-green-600 dark:text-green-400">
+                All media files are consistent.
+              </span>
+            )}
         </div>
-        {mediaResult && (mediaResult.orphan_files.length > 0 || mediaResult.missing_files.length > 0) && (
-          <div className="space-y-2 text-sm">
-            {mediaResult.orphan_files.length > 0 && (
-              <div className="space-y-2">
-                <p className="font-medium text-amber-600 dark:text-amber-400">
-                  Orphan files ({mediaResult.orphan_files.length}) — on disk but not used:
-                </p>
-                <ul className="text-xs text-muted-foreground pl-3 space-y-0.5">
-                  {mediaResult.orphan_files.slice(0, 20).map((f) => <li key={f}>{f}</li>)}
-                  {mediaResult.orphan_files.length > 20 && <li>…and {mediaResult.orphan_files.length - 20} more</li>}
-                </ul>
-                {!deleteOrphanConfirm ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-destructive border-destructive/40 hover:bg-destructive/10"
-                    disabled={busy}
-                    onClick={() => setDeleteOrphanConfirm(true)}
-                  >
-                    Delete orphan files…
-                  </Button>
-                ) : (
-                  <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 space-y-2 text-sm">
-                    <p className="font-medium text-destructive">
-                      Delete {mediaResult.orphan_files.length} orphan file{mediaResult.orphan_files.length === 1 ? "" : "s"}?
-                    </p>
-                    <p className="text-xs text-muted-foreground">This cannot be undone.</p>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={deleteOrphanMut.isPending}
-                        onClick={() => deleteOrphanMut.mutate(mediaResult.orphan_files)}
-                      >
-                        {deleteOrphanMut.isPending ? "Deleting…" : "Yes, delete"}
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setDeleteOrphanConfirm(false)}>
-                        Cancel
-                      </Button>
+        {mediaResult &&
+          (mediaResult.orphan_files.length > 0 || mediaResult.missing_files.length > 0) && (
+            <div className="space-y-2 text-sm">
+              {mediaResult.orphan_files.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium text-amber-600 dark:text-amber-400">
+                    Orphan files ({mediaResult.orphan_files.length}) — on disk but not used:
+                  </p>
+                  <ul className="text-xs text-muted-foreground pl-3 space-y-0.5">
+                    {mediaResult.orphan_files.slice(0, 20).map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                    {mediaResult.orphan_files.length > 20 && (
+                      <li>…and {mediaResult.orphan_files.length - 20} more</li>
+                    )}
+                  </ul>
+                  {!deleteOrphanConfirm ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                      disabled={busy}
+                      onClick={() => setDeleteOrphanConfirm(true)}
+                    >
+                      Delete orphan files…
+                    </Button>
+                  ) : (
+                    <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 space-y-2 text-sm">
+                      <p className="font-medium text-destructive">
+                        Delete {mediaResult.orphan_files.length} orphan file
+                        {mediaResult.orphan_files.length === 1 ? "" : "s"}?
+                      </p>
+                      <p className="text-xs text-muted-foreground">This cannot be undone.</p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteOrphanMut.isPending}
+                          onClick={() => deleteOrphanMut.mutate(mediaResult.orphan_files)}
+                        >
+                          {deleteOrphanMut.isPending ? "Deleting…" : "Yes, delete"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeleteOrphanConfirm(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
-            {mediaResult.missing_files.length > 0 && (
-              <div>
-                <p className="font-medium text-destructive">
-                  Missing files ({mediaResult.missing_files.length}) — referenced in notes but not on disk:
-                </p>
-                <ul className="text-xs text-muted-foreground pl-3 space-y-0.5">
-                  {mediaResult.missing_files.slice(0, 20).map((f) => <li key={f}>{f}</li>)}
-                  {mediaResult.missing_files.length > 20 && <li>…and {mediaResult.missing_files.length - 20} more</li>}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
+                  )}
+                </div>
+              )}
+              {mediaResult.missing_files.length > 0 && (
+                <div>
+                  <p className="font-medium text-destructive">
+                    Missing files ({mediaResult.missing_files.length}) — referenced in notes but not
+                    on disk:
+                  </p>
+                  <ul className="text-xs text-muted-foreground pl-3 space-y-0.5">
+                    {mediaResult.missing_files.slice(0, 20).map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                    {mediaResult.missing_files.length > 20 && (
+                      <li>…and {mediaResult.missing_files.length - 20} more</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
       </div>
     </section>
   );
@@ -303,7 +328,11 @@ function PluginManagerSection() {
   function markLoading(id: string, loading: boolean) {
     setLoadingIds((prev) => {
       const next = new Set(prev);
-      if (loading) { next.add(id); } else { next.delete(id); }
+      if (loading) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
       return next;
     });
   }
@@ -361,9 +390,7 @@ function PluginManagerSection() {
                   {loadingIds.has(p.id) ? "…" : p.enabled ? "Enabled" : "Enable"}
                 </Button>
               </div>
-              {p.description && (
-                <p className="text-xs text-muted-foreground">{p.description}</p>
-              )}
+              {p.description && <p className="text-xs text-muted-foreground">{p.description}</p>}
               {p.permissions.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {p.permissions.map((perm) => (
@@ -413,9 +440,7 @@ function PluginManagerSection() {
               </li>
             ))}
           </ul>
-          {runResult && (
-            <p className="text-xs text-muted-foreground">{runResult}</p>
-          )}
+          {runResult && <p className="text-xs text-muted-foreground">{runResult}</p>}
         </div>
       )}
     </section>
@@ -481,9 +506,7 @@ function UpdateSection() {
           <p className="font-medium">
             Version <span className="font-mono">{result.version}</span> is available.
           </p>
-          {result.notes && (
-            <p className="text-xs text-muted-foreground">{result.notes}</p>
-          )}
+          {result.notes && <p className="text-xs text-muted-foreground">{result.notes}</p>}
           <a
             href={`https://github.com/synapse-srs/synapse/releases/tag/v${result.version}`}
             target="_blank"
@@ -494,9 +517,7 @@ function UpdateSection() {
           </a>
         </div>
       )}
-      {result?.kind === "error" && (
-        <p className="text-sm text-destructive">{result.message}</p>
-      )}
+      {result?.kind === "error" && <p className="text-sm text-destructive">{result.message}</p>}
     </section>
   );
 }

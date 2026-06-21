@@ -77,7 +77,11 @@ pub fn all_today_studied(
     let mut map = HashMap::new();
     let rows = stmt
         .query_map([today_start_ms], |r| {
-            Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?, r.get::<_, u32>(2)?))
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, u32>(1)?,
+                r.get::<_, u32>(2)?,
+            ))
         })
         .map_err(err)?;
     for row in rows {
@@ -198,7 +202,11 @@ fn parse_sched_config(json: &str) -> SchedConfig {
         review_per_day: v["rev"]["perDay"].as_u64().unwrap_or(200) as u32,
         learning_steps_min: v["new"]["delays"]
             .as_array()
-            .map(|a| a.iter().filter_map(|x| x.as_u64().map(|n| n as u32)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_u64().map(|n| n as u32))
+                    .collect()
+            })
             .unwrap_or_else(|| vec![1, 10]),
         graduating_interval_days: v["new"]["graduating"].as_u64().unwrap_or(1) as u32,
         easy_interval_days: v["new"]["easy"].as_u64().unwrap_or(4) as u32,
@@ -209,7 +217,11 @@ fn parse_sched_config(json: &str) -> SchedConfig {
         maximum_interval_days: v["rev"]["maxIvl"].as_u64().unwrap_or(36_500) as u32,
         relearning_steps_min: v["lapse"]["delays"]
             .as_array()
-            .map(|a| a.iter().filter_map(|x| x.as_u64().map(|n| n as u32)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_u64().map(|n| n as u32))
+                    .collect()
+            })
             .unwrap_or_else(|| vec![10]),
         lapse_interval_factor: v["lapse"]["mult"].as_f64().unwrap_or(0.0),
         minimum_interval_days: v["lapse"]["minInt"].as_u64().unwrap_or(1) as u32,
@@ -381,7 +393,11 @@ pub fn count_due_by_type(
             |r| r.get(0),
         )
         .map_err(err)?;
-    Ok((new_total.min(new_limit), learning, review_total.min(review_limit)))
+    Ok((
+        new_total.min(new_limit),
+        learning,
+        review_total.min(review_limit),
+    ))
 }
 
 pub fn count_due(
@@ -440,26 +456,31 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
              WHERE c.id = ?1",
             [card_id],
             |r| {
-                Ok((r.get::<_, i64>(0)?, CardRow {
-                    deck_id: r.get(1)?,
-                    ord: r.get(2)?,
-                    card_type: r.get(3)?,
-                    interval: r.get(4)?,
-                    ease_factor: r.get(5)?,
-                    reps: r.get(6)?,
-                    lapses: r.get(7)?,
-                    remaining: r.get(8)?,
-                    stability: r.get(9)?,
-                    difficulty: r.get(10)?,
-                    last_review: r.get(11)?,
-                    fields: r.get(12)?,
-                    notetype_id: r.get(13)?,
-                }))
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    CardRow {
+                        deck_id: r.get(1)?,
+                        ord: r.get(2)?,
+                        card_type: r.get(3)?,
+                        interval: r.get(4)?,
+                        ease_factor: r.get(5)?,
+                        reps: r.get(6)?,
+                        lapses: r.get(7)?,
+                        remaining: r.get(8)?,
+                        stability: r.get(9)?,
+                        difficulty: r.get(10)?,
+                        last_review: r.get(11)?,
+                        fields: r.get(12)?,
+                        notetype_id: r.get(13)?,
+                    },
+                ))
             },
         )
         .optional()
         .map_err(err)?;
-    let Some((note_id, row)) = row else { return Ok(None) };
+    let Some((note_id, row)) = row else {
+        return Ok(None);
+    };
 
     // Field names (ordered) zipped with the note's field values.
     let mut stmt = conn
@@ -700,7 +721,9 @@ mod tests {
         storage.import(&model()).unwrap();
 
         // The new card is queued for the Default deck (id 1).
-        let queue = storage.study_queue(1, 0, 1_700_000_000_000, 20, 200).unwrap();
+        let queue = storage
+            .study_queue(1, 0, 1_700_000_000_000, 20, 200)
+            .unwrap();
         assert_eq!(queue.new.len(), 1);
         assert!(queue.learning.is_empty() && queue.review.is_empty());
         let card_id = queue.new[0];
@@ -742,7 +765,9 @@ mod tests {
         };
         storage.apply_answer(card_id, &next, 1, &log).unwrap();
 
-        let queue = storage.study_queue(1, 0, 1_700_000_000_000, 20, 200).unwrap();
+        let queue = storage
+            .study_queue(1, 0, 1_700_000_000_000, 20, 200)
+            .unwrap();
         assert!(queue.new.is_empty() && queue.learning.is_empty() && queue.review.is_empty());
         assert_eq!(
             storage.study_card(card_id).unwrap().unwrap().state.phase,
@@ -901,11 +926,13 @@ mod tests {
             r#"INSERT INTO notetypes (id, name, kind, "mod", usn, config)
                VALUES (10, 'Basic', 0, 0, -1, '{}')"#,
             [],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO fields (notetype_id, ord, name, config) VALUES (10, 0, 'Front', '{}')",
             [],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute_batch("BEGIN").unwrap();
         for i in 1..=(n as i64) {
             let note_id = i + 1_000_000;
@@ -922,7 +949,8 @@ mod tests {
                    VALUES (?1, ?2, 1, 0, 0, -1, 2, 2, 0, 10, 2500, 3, 0, 0, 0, 0, 0,
                            4.0, 5.0, 0, '')"#,
                 rusqlite::params![i, note_id],
-            ).unwrap();
+            )
+            .unwrap();
         }
         conn.execute_batch("COMMIT").unwrap();
         drop(conn);

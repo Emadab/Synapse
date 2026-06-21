@@ -13,7 +13,7 @@ use crate::ipc::{
     StatsDto,
 };
 use crate::model::{
-    Card, CanonicalModel, Deck, Field, ImportSummary, Note, NoteIndexRow, Notetype, Revlog,
+    CanonicalModel, Card, Deck, Field, ImportSummary, Note, NoteIndexRow, Notetype, Revlog,
     StudyCard, Template,
 };
 use crate::scheduling::{CardState, SchedConfig};
@@ -150,7 +150,8 @@ pub trait Storage: Send + Sync {
     ) -> CoreResult<u32>;
 
     /// Per-deck card-type counts (raw, pre-limit). Keyed by deck_id.
-    fn deck_due_counts(&self, today: i32, now_ms: i64) -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
+    fn deck_due_counts(&self, today: i32, now_ms: i64)
+        -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
 
     /// `(new_per_day, rev_per_day)` from the deck config's JSON.
     fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)>;
@@ -327,7 +328,13 @@ pub trait Storage: Send + Sync {
     // ── M16: rich search + bulk ops ───────────────────────────────────────────
 
     /// Anki-flavoured query → card rows. `limit` caps result count.
-    fn search_cards(&self, query: &str, today: i32, now_ms: i64, limit: i64) -> CoreResult<Vec<CardRow>>;
+    fn search_cards(
+        &self,
+        query: &str,
+        today: i32,
+        now_ms: i64,
+        limit: i64,
+    ) -> CoreResult<Vec<CardRow>>;
 
     /// Delete notes (and their cards + revlogs) by id; write graves.
     fn delete_notes(&self, note_ids: &[i64], now_ms: i64) -> CoreResult<()>;

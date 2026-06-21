@@ -44,18 +44,12 @@ pub fn undo_status(collection: State<'_, Collection>) -> IpcResult<Option<String
 }
 
 #[tauri::command]
-pub fn get_deck_config(
-    collection: State<'_, Collection>,
-    deck_id: i64,
-) -> IpcResult<DeckConfig> {
+pub fn get_deck_config(collection: State<'_, Collection>, deck_id: i64) -> IpcResult<DeckConfig> {
     Ok(collection.get_deck_config(deck_id)?)
 }
 
 #[tauri::command]
-pub fn set_deck_config(
-    collection: State<'_, Collection>,
-    config: DeckConfig,
-) -> IpcResult<()> {
+pub fn set_deck_config(collection: State<'_, Collection>, config: DeckConfig) -> IpcResult<()> {
     collection.set_deck_config(&config)?;
     Ok(())
 }

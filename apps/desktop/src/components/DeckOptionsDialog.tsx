@@ -146,7 +146,9 @@ export function DeckOptionsDialog({ deckId, deckName, onClose, onSaved }: Props)
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 id={titleId} className="text-sm font-semibold">Options — {deckName}</h2>
+          <h2 id={titleId} className="text-sm font-semibold">
+            Options — {deckName}
+          </h2>
           <button
             onClick={onClose}
             aria-label="Close dialog"
@@ -366,14 +368,11 @@ export function DeckOptionsDialog({ deckId, deckName, onClose, onSaved }: Props)
                     >
                       {optimizeMut.isPending ? "Optimizing…" : "Optimize FSRS weights"}
                     </Button>
-                    {optimizeError && (
-                      <p className="text-xs text-destructive">{optimizeError}</p>
-                    )}
+                    {optimizeError && <p className="text-xs text-destructive">{optimizeError}</p>}
                     {optimizeResult && (
                       <div className="space-y-1.5 text-xs">
                         <p className="text-muted-foreground">
-                          Trained on{" "}
-                          <strong>{optimizeResult.review_count}</strong> reviews across{" "}
+                          Trained on <strong>{optimizeResult.review_count}</strong> reviews across{" "}
                           <strong>{optimizeResult.card_count}</strong> cards.
                         </p>
                         <p>
@@ -405,11 +404,7 @@ export function DeckOptionsDialog({ deckId, deckName, onClose, onSaved }: Props)
                           >
                             Apply weights
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setOptimizeResult(null)}
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => setOptimizeResult(null)}>
                             Discard
                           </Button>
                         </div>
@@ -430,11 +425,7 @@ export function DeckOptionsDialog({ deckId, deckName, onClose, onSaved }: Props)
               <Button variant="ghost" size="sm" onClick={onClose}>
                 Cancel
               </Button>
-              <Button
-                size="sm"
-                onClick={() => saveMut.mutate(cfg)}
-                disabled={saveMut.isPending}
-              >
+              <Button size="sm" onClick={() => saveMut.mutate(cfg)} disabled={saveMut.isPending}>
                 {saveMut.isPending ? "Saving…" : "Save"}
               </Button>
             </div>

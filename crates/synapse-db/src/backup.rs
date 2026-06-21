@@ -22,12 +22,8 @@ pub fn backup_db(conn: &Connection, dest_path: &Path) -> CoreResult<()> {
 /// Run `PRAGMA integrity_check`. Returns empty vec on a healthy database,
 /// or a list of error strings otherwise.
 pub fn integrity_check(conn: &Connection) -> CoreResult<Vec<String>> {
-    let mut stmt = conn
-        .prepare("PRAGMA integrity_check")
-        .map_err(err)?;
-    let rows = stmt
-        .query_map([], |r| r.get::<_, String>(0))
-        .map_err(err)?;
+    let mut stmt = conn.prepare("PRAGMA integrity_check").map_err(err)?;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(0)).map_err(err)?;
     let mut results = Vec::new();
     for row in rows {
         let s = row.map_err(err)?;
@@ -48,7 +44,8 @@ pub fn optimize(conn: &Connection) -> CoreResult<()> {
 pub fn note_media_refs(conn: &Connection) -> CoreResult<Vec<String>> {
     static RE_IMG: OnceLock<Regex> = OnceLock::new();
     static RE_SND: OnceLock<Regex> = OnceLock::new();
-    let re_img = RE_IMG.get_or_init(|| Regex::new(r#"(?i)<img\b[^>]*\ssrc="([^":/][^"]*)""#).unwrap());
+    let re_img =
+        RE_IMG.get_or_init(|| Regex::new(r#"(?i)<img\b[^>]*\ssrc="([^":/][^"]*)""#).unwrap());
     let re_snd = RE_SND.get_or_init(|| Regex::new(r"\[sound:([^\]]+)\]").unwrap());
 
     let mut stmt = conn.prepare("SELECT fields FROM notes").map_err(err)?;
@@ -76,8 +73,8 @@ pub fn note_media_refs(conn: &Connection) -> CoreResult<Vec<String>> {
 pub fn create_zip(db_backup: &Path, media_dir: &Path, zip_path: &Path) -> CoreResult<u64> {
     let file = std::fs::File::create(zip_path).map_err(err)?;
     let mut zip = zip::ZipWriter::new(file);
-    let opts: zip::write::FileOptions<()> = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
+    let opts: zip::write::FileOptions<()> =
+        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
     // Add the DB backup.
     zip.start_file("collection.sqlite", opts).map_err(err)?;

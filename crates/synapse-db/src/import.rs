@@ -35,8 +35,30 @@ pub(crate) fn import(tx: &Transaction<'_>, model: &CanonicalModel) -> CoreResult
     }
 
     // 2. Decks — get-or-create by name.
+    // Only import decks that cards actually reference (or are ancestors of such decks).
+    // Anki always includes a "Default" deck even when no cards live there, so without
+    // this filter every import would silently create a spurious Default deck.
+    let direct_deck_ids: std::collections::HashSet<i64> =
+        model.cards.iter().map(|c| c.deck_id).collect();
+    let needed_deck_names: std::collections::HashSet<&str> = model
+        .decks
+        .iter()
+        .filter(|d| direct_deck_ids.contains(&d.id))
+        .map(|d| d.name.as_str())
+        .collect();
+    let decks_to_import: Vec<&synapse_core::model::Deck> = model
+        .decks
+        .iter()
+        .filter(|d| {
+            direct_deck_ids.contains(&d.id)
+                || needed_deck_names
+                    .iter()
+                    .any(|&name| name.starts_with(&format!("{}::", d.name)))
+        })
+        .collect();
+
     let mut deck_map: HashMap<i64, i64> = HashMap::new();
-    for deck in &model.decks {
+    for deck in &decks_to_import {
         let existing: Option<i64> = tx
             .query_row("SELECT id FROM decks WHERE name = ?1", [&deck.name], |r| {
                 r.get(0)
@@ -67,7 +89,7 @@ pub(crate) fn import(tx: &Transaction<'_>, model: &CanonicalModel) -> CoreResult
         deck_map.insert(deck.id, target);
     }
     // 2b. Resolve parent links now that every deck row exists.
-    for deck in &model.decks {
+    for deck in &decks_to_import {
         if let Some((parent, _)) = deck.name.rsplit_once("::") {
             tx.execute(
                 "UPDATE decks SET parent_id = (SELECT id FROM decks WHERE name = ?1) WHERE name = ?2",

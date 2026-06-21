@@ -31,7 +31,10 @@ pub(crate) fn step_action(state: &CardState, rating: Rating, steps: &[u32]) -> S
     // No steps: graduate immediately except on Again (show 1-minute delay).
     if total == 0 {
         return match rating {
-            Rating::Again => StepAction::Restart { minutes: 1, total: 0 },
+            Rating::Again => StepAction::Restart {
+                minutes: 1,
+                total: 0,
+            },
             _ => StepAction::Graduate { rating },
         };
     }
@@ -44,7 +47,10 @@ pub(crate) fn step_action(state: &CardState, rating: Rating, steps: &[u32]) -> S
     };
 
     match rating {
-        Rating::Again => StepAction::Restart { minutes: steps[0], total },
+        Rating::Again => StepAction::Restart {
+            minutes: steps[0],
+            total,
+        },
         Rating::Hard => {
             // Repeat the current step.
             let idx = (total - remaining).min(total - 1) as usize;

@@ -54,10 +54,16 @@ fn build_sequences(revlogs: &[Revlog]) -> Vec<Vec<Review>> {
         }
         let mut seq = Vec::with_capacity(entries.len());
         let mut prev_ms = entries[0].id;
-        seq.push(Review { elapsed_days: 0.0, rating: entries[0].ease.clamp(1, 4) });
+        seq.push(Review {
+            elapsed_days: 0.0,
+            rating: entries[0].ease.clamp(1, 4),
+        });
         for e in &entries[1..] {
             let elapsed = ((e.id - prev_ms) as f64 / 86_400_000.0).max(0.0);
-            seq.push(Review { elapsed_days: elapsed, rating: e.ease.clamp(1, 4) });
+            seq.push(Review {
+                elapsed_days: elapsed,
+                rating: e.ease.clamp(1, 4),
+            });
             prev_ms = e.id;
         }
         sequences.push(seq);
@@ -153,8 +159,8 @@ fn compute_loss(w: &[f64; 21], sequences: &[Vec<Review>]) -> f64 {
             };
 
             let y = if g >= 2 { 1.0f64 } else { 0.0f64 };
-            total_loss -= y * r.clamp(EPS, 1.0 - EPS).ln()
-                + (1.0 - y) * (1.0 - r).clamp(EPS, 1.0 - EPS).ln();
+            total_loss -=
+                y * r.clamp(EPS, 1.0 - EPS).ln() + (1.0 - y) * (1.0 - r).clamp(EPS, 1.0 - EPS).ln();
             count += 1;
 
             let new_s = if elapsed == 0.0 {
@@ -170,7 +176,11 @@ fn compute_loss(w: &[f64; 21], sequences: &[Vec<Review>]) -> f64 {
         }
     }
 
-    if count == 0 { f64::INFINITY } else { total_loss / count as f64 }
+    if count == 0 {
+        f64::INFINITY
+    } else {
+        total_loss / count as f64
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -197,27 +207,27 @@ fn compute_gradient(w: &[f64; 21], sequences: &[Vec<Review>]) -> [f64; 21] {
 // ---------------------------------------------------------------------------
 
 const BOUNDS: [(f64, f64); 21] = [
-    (0.1, 40.0),   // w0  initial stability Again
-    (0.1, 40.0),   // w1  initial stability Hard
-    (0.1, 40.0),   // w2  initial stability Good
-    (0.1, 40.0),   // w3  initial stability Easy
-    (1.0, 10.0),   // w4  initial difficulty anchor
-    (0.01, 5.0),   // w5  difficulty exp scale
-    (0.01, 5.0),   // w6  difficulty delta
-    (0.0, 1.0),    // w7  mean-reversion factor
-    (0.0, 5.0),    // w8  stability growth (exp)
-    (0.0, 3.0),    // w9  stability decay exponent
-    (0.01, 5.0),   // w10 success R coefficient
-    (0.01, 5.0),   // w11 lapse stability base
-    (0.01, 3.0),   // w12 lapse D exponent
-    (0.01, 3.0),   // w13 lapse S+1 exponent
-    (0.01, 5.0),   // w14 lapse R coefficient
-    (0.01, 1.5),   // w15 hard penalty
-    (1.0, 5.0),    // w16 easy bonus
-    (0.01, 5.0),   // w17 short-term coefficient
-    (-1.0, 1.5),   // w18 short-term offset
-    (0.0, 3.0),    // w19 short-term exponent
-    (0.05, 0.8),   // w20 decay magnitude (DECAY = -w20)
+    (0.1, 40.0), // w0  initial stability Again
+    (0.1, 40.0), // w1  initial stability Hard
+    (0.1, 40.0), // w2  initial stability Good
+    (0.1, 40.0), // w3  initial stability Easy
+    (1.0, 10.0), // w4  initial difficulty anchor
+    (0.01, 5.0), // w5  difficulty exp scale
+    (0.01, 5.0), // w6  difficulty delta
+    (0.0, 1.0),  // w7  mean-reversion factor
+    (0.0, 5.0),  // w8  stability growth (exp)
+    (0.0, 3.0),  // w9  stability decay exponent
+    (0.01, 5.0), // w10 success R coefficient
+    (0.01, 5.0), // w11 lapse stability base
+    (0.01, 3.0), // w12 lapse D exponent
+    (0.01, 3.0), // w13 lapse S+1 exponent
+    (0.01, 5.0), // w14 lapse R coefficient
+    (0.01, 1.5), // w15 hard penalty
+    (1.0, 5.0),  // w16 easy bonus
+    (0.01, 5.0), // w17 short-term coefficient
+    (-1.0, 1.5), // w18 short-term offset
+    (0.0, 3.0),  // w19 short-term exponent
+    (0.05, 0.8), // w20 decay magnitude (DECAY = -w20)
 ];
 
 fn clamp_weights(w: &mut [f64; 21]) {
@@ -231,13 +241,7 @@ fn clamp_weights(w: &mut [f64; 21]) {
 // Adam optimizer
 // ---------------------------------------------------------------------------
 
-fn adam_step(
-    w: &mut [f64; 21],
-    m: &mut [f64; 21],
-    v: &mut [f64; 21],
-    grad: &[f64; 21],
-    t: u32,
-) {
+fn adam_step(w: &mut [f64; 21], m: &mut [f64; 21], v: &mut [f64; 21], grad: &[f64; 21], t: u32) {
     const LR: f64 = 0.01;
     const B1: f64 = 0.9;
     const B2: f64 = 0.999;
@@ -261,10 +265,7 @@ fn adam_step(
 // ---------------------------------------------------------------------------
 
 /// Fit FSRS-6 weights from review history.
-pub fn optimize(
-    revlogs: &[Revlog],
-    initial_weights: &[f64; 21],
-) -> Result<OptimizeResult, String> {
+pub fn optimize(revlogs: &[Revlog], initial_weights: &[f64; 21]) -> Result<OptimizeResult, String> {
     let sequences = build_sequences(revlogs);
     let review_count: usize = sequences.iter().map(|s| s.len()).sum();
 

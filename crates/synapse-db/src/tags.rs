@@ -20,12 +20,7 @@ pub fn list_tags(conn: &Connection) -> CoreResult<Vec<String>> {
 
 /// Rename `old_tag` to `new_tag` in every note's tag blob and update the
 /// registry. Returns the number of notes affected.
-pub fn rename_tag(
-    conn: &Connection,
-    old_tag: &str,
-    new_tag: &str,
-    now_ms: i64,
-) -> CoreResult<u32> {
+pub fn rename_tag(conn: &Connection, old_tag: &str, new_tag: &str, now_ms: i64) -> CoreResult<u32> {
     let old_needle = format!(" {old_tag} ");
     let new_needle = format!(" {new_tag} ");
     let n = conn
@@ -135,8 +130,9 @@ mod tests {
             let conn = s.lock();
             let n = rename_tag(&conn, "verb", "v2", 999).unwrap();
             assert_eq!(n, 1);
-            let row: String =
-                conn.query_row("SELECT tags FROM notes", [], |r| r.get(0)).unwrap();
+            let row: String = conn
+                .query_row("SELECT tags FROM notes", [], |r| r.get(0))
+                .unwrap();
             assert!(row.contains(" v2 "), "tag renamed in notes: {row}");
             let tags = list_tags(&conn).unwrap();
             assert!(tags.contains(&"v2".to_string()));
@@ -152,8 +148,9 @@ mod tests {
             let conn = s.lock();
             let n = delete_tag(&conn, "verb", 999).unwrap();
             assert_eq!(n, 1);
-            let row: String =
-                conn.query_row("SELECT tags FROM notes", [], |r| r.get(0)).unwrap();
+            let row: String = conn
+                .query_row("SELECT tags FROM notes", [], |r| r.get(0))
+                .unwrap();
             assert!(!row.contains(" verb "), "tag removed from notes: {row}");
             let tags = list_tags(&conn).unwrap();
             assert!(!tags.contains(&"verb".to_string()));
@@ -169,9 +166,11 @@ mod tests {
             let conn = s.lock();
             merge_tags(&conn, &["v1".to_string(), "v2".to_string()], "verb", 999).unwrap();
             let n: i64 = conn
-                .query_row("SELECT count(*) FROM notes WHERE instr(tags, ' verb ') > 0", [], |r| {
-                    r.get(0)
-                })
+                .query_row(
+                    "SELECT count(*) FROM notes WHERE instr(tags, ' verb ') > 0",
+                    [],
+                    |r| r.get(0),
+                )
                 .unwrap();
             assert_eq!(n, 2, "both notes should have verb tag");
         }

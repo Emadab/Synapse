@@ -50,7 +50,16 @@ impl NoteIndex {
         // Space-separated terms are ANDed, matching Anki.
         parser.set_conjunction_by_default();
 
-        Ok(Self { index, reader, parser, note_id, text, tag, deck, notetype })
+        Ok(Self {
+            index,
+            reader,
+            parser,
+            note_id,
+            text,
+            tag,
+            deck,
+            notetype,
+        })
     }
 
     /// Replace the entire index contents with `rows`.
@@ -81,10 +90,14 @@ impl NoteIndex {
             .parser
             .parse_query(query)
             .or_else(|_| self.parser.parse_query(&sanitize(query)));
-        let Ok(parsed) = parsed else { return Ok(vec![]) };
+        let Ok(parsed) = parsed else {
+            return Ok(vec![]);
+        };
 
         let searcher = self.reader.searcher();
-        let hits = searcher.search(&parsed, &TopDocs::with_limit(limit)).map_err(err)?;
+        let hits = searcher
+            .search(&parsed, &TopDocs::with_limit(limit))
+            .map_err(err)?;
 
         let mut ids = Vec::with_capacity(hits.len());
         for (_score, address) in hits {

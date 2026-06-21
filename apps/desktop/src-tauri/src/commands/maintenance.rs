@@ -30,10 +30,7 @@ fn map_io<E: std::fmt::Display>(e: E) -> IpcError {
 
 /// Create a backup zip and return its metadata.
 #[tauri::command]
-pub async fn create_backup(
-    app: AppHandle,
-    col: State<'_, Collection>,
-) -> IpcResult<BackupInfo> {
+pub async fn create_backup(app: AppHandle, col: State<'_, Collection>) -> IpcResult<BackupInfo> {
     let dir = backup_dir(&app)?;
     std::fs::create_dir_all(&dir).map_err(map_io)?;
 
@@ -55,13 +52,16 @@ pub async fn create_backup(
         .map(|p| p.join("collection.media"))
         .map_err(map_io)?;
 
-    let size_bytes = backup::create_zip(&tmp, &media_dir, &zip_path)
-        .map_err(IpcError::from)?;
+    let size_bytes = backup::create_zip(&tmp, &media_dir, &zip_path).map_err(IpcError::from)?;
     let _ = std::fs::remove_file(&tmp);
 
     backup::rotate_backups(&dir, KEEP_BACKUPS).map_err(IpcError::from)?;
 
-    Ok(BackupInfo { name, created_ms: now_ms, size_bytes: size_bytes as i64 })
+    Ok(BackupInfo {
+        name,
+        created_ms: now_ms,
+        size_bytes: size_bytes as i64,
+    })
 }
 
 /// List all existing backups, newest first.
@@ -85,10 +85,7 @@ pub async fn list_backups(app: AppHandle) -> IpcResult<Vec<BackupInfo>> {
 /// after this command returns for changes to take effect. The caller must
 /// obtain explicit user confirmation before invoking this command.
 #[tauri::command]
-pub async fn restore_backup(
-    app: AppHandle,
-    name: String,
-) -> IpcResult<()> {
+pub async fn restore_backup(app: AppHandle, name: String) -> IpcResult<()> {
     let dir = backup_dir(&app)?;
     let zip_path = dir.join(&name);
     if !zip_path.is_file() {
@@ -122,6 +119,21 @@ pub async fn restore_backup(
     Ok(())
 }
 
+/// Delete a backup zip by name.
+#[tauri::command]
+pub async fn delete_backup(app: AppHandle, name: String) -> IpcResult<()> {
+    let dir = backup_dir(&app)?;
+    let zip_path = dir.join(&name);
+    if !zip_path.is_file() {
+        return Err(IpcError {
+            kind: IpcErrorKind::NotFound,
+            message: format!("backup '{name}' not found"),
+        });
+    }
+    std::fs::remove_file(&zip_path).map_err(map_io)?;
+    Ok(())
+}
+
 /// Run `PRAGMA integrity_check`. Returns empty list when healthy.
 #[tauri::command]
 pub async fn check_integrity(col: State<'_, Collection>) -> IpcResult<Vec<String>> {
@@ -138,10 +150,7 @@ pub async fn optimize_db(col: State<'_, Collection>) -> IpcResult<()> {
 /// Returns orphan files (on disk but unreferenced) and missing files
 /// (referenced in notes but absent from disk).
 #[tauri::command]
-pub async fn check_media(
-    app: AppHandle,
-    col: State<'_, Collection>,
-) -> IpcResult<MediaReport> {
+pub async fn check_media(app: AppHandle, col: State<'_, Collection>) -> IpcResult<MediaReport> {
     let media_dir = app
         .path()
         .app_data_dir()
@@ -179,7 +188,36 @@ pub async fn check_media(
         .collect::<Vec<_>>()
         .tap_sort();
 
-    Ok(MediaReport { orphan_files, missing_files })
+    Ok(MediaReport {
+        orphan_files,
+        missing_files,
+    })
+}
+
+/// Delete orphan media files — files on disk not referenced by any note.
+/// Accepts the list returned by `check_media` so the frontend can confirm
+/// before deleting. Returns the number of files actually removed.
+#[tauri::command]
+pub async fn delete_orphan_media(app: AppHandle, files: Vec<String>) -> IpcResult<u32> {
+    let media_dir = app
+        .path()
+        .app_data_dir()
+        .map(|p| p.join("collection.media"))
+        .map_err(map_io)?;
+
+    let mut removed = 0u32;
+    for name in &files {
+        // Reject any path that would escape the media directory.
+        let path = media_dir.join(name);
+        if path.parent() != Some(media_dir.as_path()) {
+            continue;
+        }
+        if path.is_file() {
+            std::fs::remove_file(&path).map_err(map_io)?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
 }
 
 trait TapSort {

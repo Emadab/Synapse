@@ -49,7 +49,11 @@ struct Cond {
 
 impl Cond {
     fn pos(sql: impl Into<String>, params: Vec<Param>) -> Self {
-        Cond { negated: false, sql: sql.into(), params }
+        Cond {
+            negated: false,
+            sql: sql.into(),
+            params,
+        }
     }
 }
 
@@ -89,9 +93,9 @@ fn parse_token(token: &str, today: i32, now_ms: i64) -> Option<Cond> {
             "new" => "c.queue = 0".into(),
             "review" => "c.queue = 2".into(),
             "learn" => "c.queue = 1".into(),
-            "due" => format!(
-                "(c.queue = 2 AND c.due <= {today}) OR (c.queue = 1 AND c.due <= {now_ms})"
-            ),
+            "due" => {
+                format!("(c.queue = 2 AND c.due <= {today}) OR (c.queue = 1 AND c.due <= {now_ms})")
+            }
             "suspended" => "c.queue = -1".into(),
             "buried" => "c.queue IN (-2, -3)".into(),
             _ => return None,
@@ -378,7 +382,9 @@ pub fn move_cards_to_deck(conn: &Connection, card_ids: &[i64], deck_id: i64) -> 
 /// Remove `tag` from a note's tag blob (idempotent).
 pub fn remove_note_tag(conn: &Connection, note_id: i64, tag: &str, now_ms: i64) -> CoreResult<()> {
     let current: String = conn
-        .query_row("SELECT tags FROM notes WHERE id = ?1", [note_id], |r| r.get(0))
+        .query_row("SELECT tags FROM notes WHERE id = ?1", [note_id], |r| {
+            r.get(0)
+        })
         .map_err(err)?;
     let needle = format!(" {tag} ");
     if !current.contains(&needle) {
@@ -408,26 +414,111 @@ mod tests {
         let s = SqliteStorage::open_in_memory().unwrap();
         s.ensure_collection(1_700_000_000_000).unwrap();
         s.import(&CanonicalModel {
-            notetypes: vec![
-                Notetype { id: 1, name: "Basic".into(), kind: 0, mod_ms: 0, usn: -1, config_json: "{}".into() },
-            ],
+            notetypes: vec![Notetype {
+                id: 1,
+                name: "Basic".into(),
+                kind: 0,
+                mod_ms: 0,
+                usn: -1,
+                config_json: "{}".into(),
+            }],
             fields: vec![
-                Field { notetype_id: 1, ord: 0, name: "Front".into(), config_json: "{}".into() },
-                Field { notetype_id: 1, ord: 1, name: "Back".into(), config_json: "{}".into() },
+                Field {
+                    notetype_id: 1,
+                    ord: 0,
+                    name: "Front".into(),
+                    config_json: "{}".into(),
+                },
+                Field {
+                    notetype_id: 1,
+                    ord: 1,
+                    name: "Back".into(),
+                    config_json: "{}".into(),
+                },
             ],
-            templates: vec![
-                Template { notetype_id: 1, ord: 0, name: "Card 1".into(), qfmt: "{{Front}}".into(), afmt: "{{Back}}".into(), config_json: "{}".into() },
-            ],
+            templates: vec![Template {
+                notetype_id: 1,
+                ord: 0,
+                name: "Card 1".into(),
+                qfmt: "{{Front}}".into(),
+                afmt: "{{Back}}".into(),
+                config_json: "{}".into(),
+            }],
             notes: vec![
-                Note { id: 1, guid: "g1".into(), notetype_id: 1, mod_ms: 0, usn: -1, tags: vec!["verb".into()], fields: vec!["hello".into(), "hola".into()], sort_field: Some("hello".into()), checksum: None },
-                Note { id: 2, guid: "g2".into(), notetype_id: 1, mod_ms: 0, usn: -1, tags: vec!["noun".into()], fields: vec!["cat".into(), "gato".into()], sort_field: Some("cat".into()), checksum: None },
+                Note {
+                    id: 1,
+                    guid: "g1".into(),
+                    notetype_id: 1,
+                    mod_ms: 0,
+                    usn: -1,
+                    tags: vec!["verb".into()],
+                    fields: vec!["hello".into(), "hola".into()],
+                    sort_field: Some("hello".into()),
+                    checksum: None,
+                },
+                Note {
+                    id: 2,
+                    guid: "g2".into(),
+                    notetype_id: 1,
+                    mod_ms: 0,
+                    usn: -1,
+                    tags: vec!["noun".into()],
+                    fields: vec!["cat".into(), "gato".into()],
+                    sort_field: Some("cat".into()),
+                    checksum: None,
+                },
             ],
             cards: vec![
-                Card { id: 1, note_id: 1, deck_id: 1, ord: 0, mod_ms: 0, usn: -1, ctype: 0, queue: 0, due: 1, interval: 0, ease_factor: 0, reps: 0, lapses: 0, remaining: 0, original_due: 0, original_deck_id: 0, flags: 1, fsrs_stability: None, fsrs_difficulty: None, fsrs_last_review: None, data: None },
-                Card { id: 2, note_id: 2, deck_id: 1, ord: 0, mod_ms: 0, usn: -1, ctype: 2, queue: 2, due: 0, interval: 30, ease_factor: 2500, reps: 5, lapses: 1, remaining: 0, original_due: 0, original_deck_id: 0, flags: 0, fsrs_stability: None, fsrs_difficulty: None, fsrs_last_review: None, data: None },
+                Card {
+                    id: 1,
+                    note_id: 1,
+                    deck_id: 1,
+                    ord: 0,
+                    mod_ms: 0,
+                    usn: -1,
+                    ctype: 0,
+                    queue: 0,
+                    due: 1,
+                    interval: 0,
+                    ease_factor: 0,
+                    reps: 0,
+                    lapses: 0,
+                    remaining: 0,
+                    original_due: 0,
+                    original_deck_id: 0,
+                    flags: 1,
+                    fsrs_stability: None,
+                    fsrs_difficulty: None,
+                    fsrs_last_review: None,
+                    data: None,
+                },
+                Card {
+                    id: 2,
+                    note_id: 2,
+                    deck_id: 1,
+                    ord: 0,
+                    mod_ms: 0,
+                    usn: -1,
+                    ctype: 2,
+                    queue: 2,
+                    due: 0,
+                    interval: 30,
+                    ease_factor: 2500,
+                    reps: 5,
+                    lapses: 1,
+                    remaining: 0,
+                    original_due: 0,
+                    original_deck_id: 0,
+                    flags: 0,
+                    fsrs_stability: None,
+                    fsrs_difficulty: None,
+                    fsrs_last_review: None,
+                    data: None,
+                },
             ],
             ..Default::default()
-        }).unwrap();
+        })
+        .unwrap();
         let card1: i64 = s.lock().query_row("SELECT id FROM cards WHERE note_id = (SELECT id FROM notes WHERE sort_field = 'hello')", [], |r| r.get(0)).unwrap();
         let card2: i64 = s.lock().query_row("SELECT id FROM cards WHERE note_id = (SELECT id FROM notes WHERE sort_field = 'cat')", [], |r| r.get(0)).unwrap();
         (s, card1, card2)
@@ -451,7 +542,9 @@ mod tests {
     #[test]
     fn is_review_filter() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("is:review", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s
+            .search_cards("is:review", 0, 1_700_000_000_000, 100)
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].sort_field, "cat");
     }
@@ -459,7 +552,9 @@ mod tests {
     #[test]
     fn tag_filter() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("tag:verb", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s
+            .search_cards("tag:verb", 0, 1_700_000_000_000, 100)
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert!(rows[0].tags.contains(&"verb".to_string()));
     }
@@ -475,7 +570,9 @@ mod tests {
     #[test]
     fn negation() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("-is:new", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s
+            .search_cards("-is:new", 0, 1_700_000_000_000, 100)
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_ne!(rows[0].queue, 0);
     }
@@ -490,7 +587,9 @@ mod tests {
     #[test]
     fn prop_lapses() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("prop:lapses>0", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s
+            .search_cards("prop:lapses>0", 0, 1_700_000_000_000, 100)
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].lapses, 1);
     }
@@ -498,7 +597,13 @@ mod tests {
     #[test]
     fn delete_notes_removes_cards_and_notes() {
         let (s, _, _) = setup();
-        let note_ids: Vec<i64> = s.lock().query_row("SELECT id FROM notes WHERE sort_field = 'hello'", [], |r| r.get(0)).map(|id| vec![id]).unwrap();
+        let note_ids: Vec<i64> = s
+            .lock()
+            .query_row("SELECT id FROM notes WHERE sort_field = 'hello'", [], |r| {
+                r.get(0)
+            })
+            .map(|id| vec![id])
+            .unwrap();
         s.delete_notes(&note_ids, 1_000).unwrap();
         let rows = s.search_cards("", 0, 1_700_000_000_000, 100).unwrap();
         assert_eq!(rows.len(), 1);
@@ -508,7 +613,14 @@ mod tests {
     fn move_cards_to_deck() {
         let (s, card1, _) = setup();
         // Create a second deck first.
-        let new_deck = s.lock().query_row("SELECT id FROM decks WHERE id = 1", [], |r: &rusqlite::Row| r.get::<_, i64>(0)).unwrap();
+        let new_deck = s
+            .lock()
+            .query_row(
+                "SELECT id FROM decks WHERE id = 1",
+                [],
+                |r: &rusqlite::Row| r.get::<_, i64>(0),
+            )
+            .unwrap();
         // Move card1 to same deck (no-op but exercises the path).
         s.move_cards_to_deck(&[card1], new_deck).unwrap();
         let rows = s.search_cards("is:new", 0, 1_700_000_000_000, 100).unwrap();

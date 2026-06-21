@@ -58,7 +58,11 @@ fn learning(
     is_relearn: bool,
 ) -> AnswerOutcome {
     let cfg = &ctx.config;
-    let phase = if is_relearn { CardPhase::Relearning } else { CardPhase::Learning };
+    let phase = if is_relearn {
+        CardPhase::Relearning
+    } else {
+        CardPhase::Learning
+    };
 
     let graduate_interval = |r: Rating| -> u32 {
         if is_relearn {
@@ -72,11 +76,22 @@ fn learning(
 
     match step_action(state, rating, steps) {
         StepAction::Restart { minutes, total } => AnswerOutcome {
-            next: CardState { phase, steps_remaining: total, ..*state },
+            next: CardState {
+                phase,
+                steps_remaining: total,
+                ..*state
+            },
             interval: Interval::Minutes(minutes),
         },
-        StepAction::Continue { steps_remaining, minutes } => AnswerOutcome {
-            next: CardState { phase, steps_remaining, ..*state },
+        StepAction::Continue {
+            steps_remaining,
+            minutes,
+        } => AnswerOutcome {
+            next: CardState {
+                phase,
+                steps_remaining,
+                ..*state
+            },
             interval: Interval::Minutes(minutes),
         },
         StepAction::Graduate { rating: r } => graduated(state, graduate_interval(r), ctx),
@@ -136,8 +151,8 @@ fn review(state: &CardState, rating: Rating, ctx: &SchedContext) -> AnswerOutcom
             let hard_days = clamp_interval(ivl * cfg.hard_interval_factor * modifier, cfg)
                 .max(state.interval_days + 1);
             let good_days = clamp_interval(ivl * ease * modifier, cfg).max(hard_days + 1);
-            let days = clamp_interval(ivl * ease * cfg.easy_bonus * modifier, cfg)
-                .max(good_days + 1);
+            let days =
+                clamp_interval(ivl * ease * cfg.easy_bonus * modifier, cfg).max(good_days + 1);
             review_outcome(state, ctx, days, new_ease)
         }
     }
@@ -255,9 +270,18 @@ mod tests {
         let hard = s.answer(&card, Rating::Hard, &c).interval;
         let good = s.answer(&card, Rating::Good, &c).interval;
         let easy = s.answer(&card, Rating::Easy, &c).interval;
-        let h = match hard { Interval::Days(d) => d, _ => panic!() };
-        let g = match good { Interval::Days(d) => d, _ => panic!() };
-        let e = match easy { Interval::Days(d) => d, _ => panic!() };
+        let h = match hard {
+            Interval::Days(d) => d,
+            _ => panic!(),
+        };
+        let g = match good {
+            Interval::Days(d) => d,
+            _ => panic!(),
+        };
+        let e = match easy {
+            Interval::Days(d) => d,
+            _ => panic!(),
+        };
         assert!(h < g, "hard={h} must < good={g}");
         assert!(g < e, "good={g} must < easy={e}");
     }

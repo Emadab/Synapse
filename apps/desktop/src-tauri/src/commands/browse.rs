@@ -1,6 +1,8 @@
 //! Card/note browser commands: list, fetch, save notes; Anki-query card search; bulk ops.
 
-use synapse_core::ipc::{AddNoteResult, CardRow, IpcError, IpcErrorKind, NoteDetail, NoteOverview, NotetypeSummary};
+use synapse_core::ipc::{
+    AddNoteResult, CardRow, IpcError, IpcErrorKind, NoteDetail, NoteOverview, NotetypeSummary,
+};
 use synapse_core::Collection;
 use tauri::State;
 
@@ -63,28 +65,28 @@ pub fn search_notes(
     let ids = search
         .0
         .lock()
-        .map_err(|_| IpcError { kind: IpcErrorKind::Internal, message: "search lock poisoned".into() })?
+        .map_err(|_| IpcError {
+            kind: IpcErrorKind::Internal,
+            message: "search lock poisoned".into(),
+        })?
         .search(q, 500)
-        .map_err(|e| IpcError { kind: IpcErrorKind::Internal, message: e.to_string() })?;
+        .map_err(|e| IpcError {
+            kind: IpcErrorKind::Internal,
+            message: e.to_string(),
+        })?;
     Ok(collection.notes_by_ids(&ids)?)
 }
 
 /// Anki-flavoured card search: supports is:/flag:/deck:/tag:/prop:/-/or.
 /// Returns up to 2000 card rows (cards, not notes) for the browser table.
 #[tauri::command]
-pub fn search_cards(
-    collection: State<'_, Collection>,
-    query: String,
-) -> IpcResult<Vec<CardRow>> {
+pub fn search_cards(collection: State<'_, Collection>, query: String) -> IpcResult<Vec<CardRow>> {
     Ok(collection.search_cards(query.trim(), 2000)?)
 }
 
 /// Delete notes (and their cards) by note id list.
 #[tauri::command]
-pub fn delete_notes(
-    collection: State<'_, Collection>,
-    note_ids: Vec<i64>,
-) -> IpcResult<()> {
+pub fn delete_notes(collection: State<'_, Collection>, note_ids: Vec<i64>) -> IpcResult<()> {
     collection.delete_notes(&note_ids)?;
     Ok(())
 }
@@ -109,7 +111,10 @@ pub fn bulk_add_tag(
 ) -> IpcResult<()> {
     let tag = tag.trim().to_string();
     if tag.is_empty() || tag.contains(' ') {
-        return Err(IpcError { kind: IpcErrorKind::Invalid, message: "tag must be non-empty and contain no spaces".into() });
+        return Err(IpcError {
+            kind: IpcErrorKind::Invalid,
+            message: "tag must be non-empty and contain no spaces".into(),
+        });
     }
     collection.bulk_add_tag(&note_ids, &tag)?;
     Ok(())
