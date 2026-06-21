@@ -119,22 +119,28 @@ pub trait Storage: Send + Sync {
 
     /// The studyable cards of `deck_id` split into streams, gated by due time
     /// (`today` for reviews, `now_ms` for learning) and capped by daily limits.
+    /// `today_end_ms` is the start of tomorrow (ms); learning cards due before
+    /// that time are eligible for the learn-ahead fallback when nothing else is due.
     /// The caller assembles the final order from the [`StudyQueue`].
     fn study_queue(
         &self,
         deck_id: i64,
         today: i32,
         now_ms: i64,
+        today_end_ms: i64,
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<StudyQueue>;
 
     /// Count of studyable cards by type `(new, learning, review)`, capped by limits.
+    /// `today_end_ms` gates the learning count: cards due before midnight count even
+    /// if not yet due right now.
     fn count_due_by_type(
         &self,
         deck_id: i64,
         today: i32,
         now_ms: i64,
+        today_end_ms: i64,
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<(u32, u32, u32)>;
@@ -145,12 +151,14 @@ pub trait Storage: Send + Sync {
         deck_id: i64,
         today: i32,
         now_ms: i64,
+        today_end_ms: i64,
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<u32>;
 
     /// Per-deck card-type counts (raw, pre-limit). Keyed by deck_id.
-    fn deck_due_counts(&self, today: i32, now_ms: i64)
+    /// `today_end_ms` gates the learning count (cards due before midnight).
+    fn deck_due_counts(&self, today: i32, now_ms: i64, today_end_ms: i64)
         -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
 
     /// `(new_per_day, rev_per_day)` from the deck config's JSON.

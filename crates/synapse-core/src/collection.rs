@@ -64,6 +64,11 @@ impl Collection {
         ((self.clock.now_ms() - self.created_ms) / MS_PER_DAY) as i32
     }
 
+    /// Start of tomorrow in ms — used as the learning-card gate for today's session.
+    fn today_end_ms(&self) -> i64 {
+        self.created_ms + i64::from(self.today() + 1) * MS_PER_DAY
+    }
+
     /// Current wall-clock time in ms (from the injected clock).
     pub fn now_ms(&self) -> i64 {
         self.clock.now_ms()
@@ -89,7 +94,7 @@ impl Collection {
     #[allow(clippy::type_complexity)]
     pub fn list_decks_with_counts(&self) -> CoreResult<Vec<(Deck, (u32, u32, u32))>> {
         let decks = self.storage.list_decks()?;
-        let raw_counts = self.storage.deck_due_counts(self.today(), self.now_ms())?;
+        let raw_counts = self.storage.deck_due_counts(self.today(), self.now_ms(), self.today_end_ms())?;
         let all_limits = self.storage.all_deck_limits()?;
         let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
         let studied = self.storage.all_today_studied(today_start_ms)?;
@@ -118,6 +123,7 @@ impl Collection {
             deck_id,
             self.today(),
             self.now_ms(),
+            self.today_end_ms(),
             new_limit,
             review_limit,
         )
@@ -130,6 +136,7 @@ impl Collection {
             deck_id,
             self.today(),
             self.now_ms(),
+            self.today_end_ms(),
             new_limit,
             review_limit,
         )
@@ -155,6 +162,7 @@ impl Collection {
             deck_id,
             self.today(),
             self.now_ms(),
+            self.today_end_ms(),
             new_limit,
             review_limit,
         )?;
@@ -941,6 +949,7 @@ mod tests {
             _deck_id: i64,
             _today: i32,
             _now_ms: i64,
+            _today_end_ms: i64,
             _new_limit: u32,
             _review_limit: u32,
         ) -> CoreResult<crate::ports::StudyQueue> {
@@ -951,6 +960,7 @@ mod tests {
             _deck_id: i64,
             _today: i32,
             _now_ms: i64,
+            _today_end_ms: i64,
             _new_limit: u32,
             _review_limit: u32,
         ) -> CoreResult<(u32, u32, u32)> {
@@ -961,6 +971,7 @@ mod tests {
             _deck_id: i64,
             _today: i32,
             _now_ms: i64,
+            _today_end_ms: i64,
             _new_limit: u32,
             _review_limit: u32,
         ) -> CoreResult<u32> {
@@ -970,6 +981,7 @@ mod tests {
             &self,
             _today: i32,
             _now_ms: i64,
+            _today_end_ms: i64,
         ) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
             Ok(std::collections::HashMap::new())
         }

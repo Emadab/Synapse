@@ -268,11 +268,6 @@ pub fn ensure_collection(conn: &Connection, now_ms: i64) -> CoreResult<i64> {
     .map_err(err)
 }
 
-/// Learn-ahead window (ms): when nothing else is due, a learning card whose due
-/// time is within this window of `now` may be shown early. Matches Anki's
-/// default collapse / learn-ahead limit of 20 minutes.
-const LEARN_AHEAD_MS: i64 = 20 * 60 * 1000;
-
 /// New-card order jitter. New cards carry their import position in `due` — for a
 /// frequency-ranked deck that means most-frequent first. We sort by that rank
 /// plus a small random offset in `0..NEW_ORDER_JITTER`, so the run stays roughly
@@ -292,6 +287,7 @@ pub fn study_queue(
     deck_id: i64,
     today: i32,
     now_ms: i64,
+    today_end_ms: i64,
     new_limit: u32,
     review_limit: u32,
 ) -> CoreResult<synapse_core::ports::StudyQueue> {
@@ -342,12 +338,13 @@ pub fn study_queue(
             .map_err(err)?;
     }
 
-    // 4. Learn-ahead fallback — the soonest learning card due within the window.
+    // 4. Learn-ahead fallback — the soonest learning card due before midnight.
+    //    Shown immediately when nothing else is due so the user can finish the day.
     let learning_ahead: Option<i64> = conn
         .query_row(
             "SELECT id FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
              AND type IN (1, 3) AND due > ?2 AND due <= ?3 ORDER BY due LIMIT 1",
-            params![deck_id, now_ms, now_ms + LEARN_AHEAD_MS],
+            params![deck_id, now_ms, today_end_ms],
             |r| r.get(0),
         )
         .optional()
@@ -365,7 +362,8 @@ pub fn count_due_by_type(
     conn: &Connection,
     deck_id: i64,
     today: i32,
-    now_ms: i64,
+    _now_ms: i64,
+    today_end_ms: i64,
     new_limit: u32,
     review_limit: u32,
 ) -> CoreResult<(u32, u32, u32)> {
@@ -373,7 +371,7 @@ pub fn count_due_by_type(
         .query_row(
             "SELECT COUNT(*) FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
              AND type IN (1, 3) AND due <= ?2",
-            params![deck_id, now_ms],
+            params![deck_id, today_end_ms],
             |r| r.get(0),
         )
         .map_err(err)?;
@@ -405,10 +403,12 @@ pub fn count_due(
     deck_id: i64,
     today: i32,
     now_ms: i64,
+    today_end_ms: i64,
     new_limit: u32,
     review_limit: u32,
 ) -> CoreResult<u32> {
-    let (n, l, r) = count_due_by_type(conn, deck_id, today, now_ms, new_limit, review_limit)?;
+    let (n, l, r) =
+        count_due_by_type(conn, deck_id, today, now_ms, today_end_ms, new_limit, review_limit)?;
     Ok(n + l + r)
 }
 
@@ -416,7 +416,9 @@ pub fn deck_due_counts(
     conn: &Connection,
     today: i32,
     now_ms: i64,
+    today_end_ms: i64,
 ) -> CoreResult<HashMap<i64, (u32, u32, u32)>> {
+    let _ = now_ms; // kept for API symmetry; learning gate now uses today_end_ms
     let mut stmt = conn
         .prepare(
             "SELECT deck_id,
@@ -430,7 +432,7 @@ pub fn deck_due_counts(
         .map_err(err)?;
     let mut map = HashMap::new();
     let rows = stmt
-        .query_map(params![today, now_ms], |r| {
+        .query_map(params![today, today_end_ms], |r| {
             Ok((
                 r.get::<_, i64>(0)?,
                 r.get::<_, u32>(1)?,
@@ -722,7 +724,7 @@ mod tests {
 
         // The new card is queued for the Default deck (id 1).
         let queue = storage
-            .study_queue(1, 0, 1_700_000_000_000, 20, 200)
+            .study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200)
             .unwrap();
         assert_eq!(queue.new.len(), 1);
         assert!(queue.learning.is_empty() && queue.review.is_empty());
@@ -766,7 +768,7 @@ mod tests {
         storage.apply_answer(card_id, &next, 1, &log).unwrap();
 
         let queue = storage
-            .study_queue(1, 0, 1_700_000_000_000, 20, 200)
+            .study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200)
             .unwrap();
         assert!(queue.new.is_empty() && queue.learning.is_empty() && queue.review.is_empty());
         assert_eq!(
@@ -827,29 +829,33 @@ mod tests {
 
     const NOW: i64 = 1_700_000_000_000;
     const MIN_MS: i64 = 60_000;
+    // today_end_ms: since ensure_collection(NOW) sets created_ms=NOW and today=0,
+    // tomorrow starts at NOW + 1 day.
+    const TODAY_END: i64 = NOW + 86_400_000;
 
     #[test]
-    fn learning_card_due_in_future_is_not_served() {
+    fn learning_card_due_later_today_counted_in_badge() {
         let storage = SqliteStorage::open_in_memory().unwrap();
         storage.ensure_collection(NOW).unwrap();
         // A learning card due in 10 min and a brand-new card.
         storage
             .import(&model_with_cards(vec![
-                card(1, 1, 1, NOW + 10 * MIN_MS), // learning, future
+                card(1, 1, 1, NOW + 10 * MIN_MS), // learning, due later today
                 card(2, 0, 0, 0),                 // new
             ]))
             .unwrap();
 
-        let q = storage.study_queue(1, 0, NOW, 20, 200).unwrap();
-        // Future learning card is gated out; the new card is available.
+        let q = storage.study_queue(1, 0, NOW, TODAY_END, 20, 200).unwrap();
+        // Future learning card is gated out of the immediate queue.
         assert!(q.learning.is_empty());
         assert_eq!(q.new, vec![2]);
-        // It sits inside the learn-ahead window, so it is the fallback.
+        // Due today → eligible as learn-ahead fallback.
         assert_eq!(q.learning_ahead, Some(1));
 
-        // The badge count must exclude the not-yet-due learning card.
-        let (new, learning, review) = storage.count_due_by_type(1, 0, NOW, 20, 200).unwrap();
-        assert_eq!((new, learning, review), (1, 0, 0));
+        // Badge count includes the learning card (due today, even though not due yet).
+        let (new, learning, review) =
+            storage.count_due_by_type(1, 0, NOW, TODAY_END, 20, 200).unwrap();
+        assert_eq!((new, learning, review), (1, 1, 0));
     }
 
     #[test]
@@ -863,9 +869,10 @@ mod tests {
             ]))
             .unwrap();
 
-        let q = storage.study_queue(1, 0, NOW, 20, 200).unwrap();
+        let q = storage.study_queue(1, 0, NOW, TODAY_END, 20, 200).unwrap();
         assert_eq!(q.learning, vec![1]);
-        let (_, learning, _) = storage.count_due_by_type(1, 0, NOW, 20, 200).unwrap();
+        let (_, learning, _) =
+            storage.count_due_by_type(1, 0, NOW, TODAY_END, 20, 200).unwrap();
         assert_eq!(learning, 1);
     }
 
@@ -877,7 +884,7 @@ mod tests {
         let cards: Vec<Card> = (1..=50).map(|p| card(p, 0, 0, p)).collect();
         storage.import(&model_with_cards(cards)).unwrap();
 
-        let q = storage.study_queue(1, 0, NOW, 100, 200).unwrap();
+        let q = storage.study_queue(1, 0, NOW, TODAY_END, 100, 200).unwrap();
         assert_eq!(q.new.len(), 50);
 
         // Jitter is bounded: a card at rank `p` gets a key in `[p, p+JITTER)`, so
@@ -892,7 +899,7 @@ mod tests {
         let strictly_sorted = (0..20).all(|i| q.new[i] == (i as i64) + 1);
         let mut any_jitter = !strictly_sorted;
         for _ in 0..8 {
-            let q2 = storage.study_queue(1, 0, NOW, 100, 200).unwrap();
+            let q2 = storage.study_queue(1, 0, NOW, TODAY_END, 100, 200).unwrap();
             if (0..20).any(|i| q2.new[i] != (i as i64) + 1) {
                 any_jitter = true;
             }
@@ -901,15 +908,15 @@ mod tests {
     }
 
     #[test]
-    fn learn_ahead_only_within_window() {
+    fn learning_card_due_tomorrow_not_in_learn_ahead() {
         let storage = SqliteStorage::open_in_memory().unwrap();
         storage.ensure_collection(NOW).unwrap();
-        // One learning card due well beyond the 20-min window, nothing else.
+        // One learning card due tomorrow — beyond today_end_ms.
         storage
-            .import(&model_with_cards(vec![card(1, 1, 1, NOW + 60 * MIN_MS)]))
+            .import(&model_with_cards(vec![card(1, 1, 1, NOW + 2 * 86_400_000)]))
             .unwrap();
 
-        let q = storage.study_queue(1, 0, NOW, 20, 200).unwrap();
+        let q = storage.study_queue(1, 0, NOW, TODAY_END, 20, 200).unwrap();
         assert!(q.learning.is_empty() && q.new.is_empty() && q.review.is_empty());
         assert_eq!(q.learning_ahead, None);
     }
@@ -961,7 +968,7 @@ mod tests {
     fn study_queue_builds_under_500ms_for_10k_reviews() {
         let storage = storage_with_reviews(10_000);
         let start = std::time::Instant::now();
-        let q = storage.study_queue(1, 0, NOW, 20, 9999).unwrap();
+        let q = storage.study_queue(1, 0, NOW, TODAY_END, 20, 9999).unwrap();
         let elapsed = start.elapsed();
         // Queue is capped at rev_per_day=9999 but all 10k are eligible.
         assert!(!q.review.is_empty(), "expected non-empty review queue");
@@ -976,7 +983,8 @@ mod tests {
     fn due_count_under_200ms_for_10k_cards() {
         let storage = storage_with_reviews(10_000);
         let start = std::time::Instant::now();
-        let (new, learning, review) = storage.count_due_by_type(1, 0, NOW, 20, 9999).unwrap();
+        let (new, learning, review) =
+            storage.count_due_by_type(1, 0, NOW, TODAY_END, 20, 9999).unwrap();
         let elapsed = start.elapsed();
         assert_eq!(new, 0);
         assert_eq!(learning, 0);

@@ -462,6 +462,7 @@ impl Storage for SqliteStorage {
         deck_id: i64,
         today: i32,
         now_ms: i64,
+        today_end_ms: i64,
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<synapse_core::ports::StudyQueue> {
@@ -470,6 +471,7 @@ impl Storage for SqliteStorage {
             deck_id,
             today,
             now_ms,
+            today_end_ms,
             new_limit,
             review_limit,
         )
@@ -480,6 +482,7 @@ impl Storage for SqliteStorage {
         deck_id: i64,
         today: i32,
         now_ms: i64,
+        today_end_ms: i64,
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<(u32, u32, u32)> {
@@ -488,6 +491,7 @@ impl Storage for SqliteStorage {
             deck_id,
             today,
             now_ms,
+            today_end_ms,
             new_limit,
             review_limit,
         )
@@ -498,6 +502,7 @@ impl Storage for SqliteStorage {
         deck_id: i64,
         today: i32,
         now_ms: i64,
+        today_end_ms: i64,
         new_limit: u32,
         review_limit: u32,
     ) -> CoreResult<u32> {
@@ -506,6 +511,7 @@ impl Storage for SqliteStorage {
             deck_id,
             today,
             now_ms,
+            today_end_ms,
             new_limit,
             review_limit,
         )
@@ -515,8 +521,9 @@ impl Storage for SqliteStorage {
         &self,
         today: i32,
         now_ms: i64,
+        today_end_ms: i64,
     ) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
-        study::deck_due_counts(&self.lock(), today, now_ms)
+        study::deck_due_counts(&self.lock(), today, now_ms, today_end_ms)
     }
 
     fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)> {
