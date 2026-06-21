@@ -94,7 +94,9 @@ impl Collection {
     #[allow(clippy::type_complexity)]
     pub fn list_decks_with_counts(&self) -> CoreResult<Vec<(Deck, (u32, u32, u32))>> {
         let decks = self.storage.list_decks()?;
-        let raw_counts = self.storage.deck_due_counts(self.today(), self.now_ms(), self.today_end_ms())?;
+        let raw_counts =
+            self.storage
+                .deck_due_counts(self.today(), self.now_ms(), self.today_end_ms())?;
         let all_limits = self.storage.all_deck_limits()?;
         let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
         let studied = self.storage.all_today_studied(today_start_ms)?;

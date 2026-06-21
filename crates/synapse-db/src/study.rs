@@ -407,8 +407,15 @@ pub fn count_due(
     new_limit: u32,
     review_limit: u32,
 ) -> CoreResult<u32> {
-    let (n, l, r) =
-        count_due_by_type(conn, deck_id, today, now_ms, today_end_ms, new_limit, review_limit)?;
+    let (n, l, r) = count_due_by_type(
+        conn,
+        deck_id,
+        today,
+        now_ms,
+        today_end_ms,
+        new_limit,
+        review_limit,
+    )?;
     Ok(n + l + r)
 }
 
@@ -853,8 +860,9 @@ mod tests {
         assert_eq!(q.learning_ahead, Some(1));
 
         // Badge count includes the learning card (due today, even though not due yet).
-        let (new, learning, review) =
-            storage.count_due_by_type(1, 0, NOW, TODAY_END, 20, 200).unwrap();
+        let (new, learning, review) = storage
+            .count_due_by_type(1, 0, NOW, TODAY_END, 20, 200)
+            .unwrap();
         assert_eq!((new, learning, review), (1, 1, 0));
     }
 
@@ -871,8 +879,9 @@ mod tests {
 
         let q = storage.study_queue(1, 0, NOW, TODAY_END, 20, 200).unwrap();
         assert_eq!(q.learning, vec![1]);
-        let (_, learning, _) =
-            storage.count_due_by_type(1, 0, NOW, TODAY_END, 20, 200).unwrap();
+        let (_, learning, _) = storage
+            .count_due_by_type(1, 0, NOW, TODAY_END, 20, 200)
+            .unwrap();
         assert_eq!(learning, 1);
     }
 
@@ -983,8 +992,9 @@ mod tests {
     fn due_count_under_200ms_for_10k_cards() {
         let storage = storage_with_reviews(10_000);
         let start = std::time::Instant::now();
-        let (new, learning, review) =
-            storage.count_due_by_type(1, 0, NOW, TODAY_END, 20, 9999).unwrap();
+        let (new, learning, review) = storage
+            .count_due_by_type(1, 0, NOW, TODAY_END, 20, 9999)
+            .unwrap();
         let elapsed = start.elapsed();
         assert_eq!(new, 0);
         assert_eq!(learning, 0);

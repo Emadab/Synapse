@@ -227,7 +227,9 @@ mod tests {
         assert_eq!(q, -1);
 
         // Suspended card is excluded from study queue
-        let queue = s.study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200).unwrap();
+        let queue = s
+            .study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200)
+            .unwrap();
         assert!(queue.new.is_empty());
 
         s.unsuspend_cards(&[card_id]).unwrap();
@@ -239,7 +241,9 @@ mod tests {
             .unwrap();
         assert_eq!(q, 0); // restored to type
 
-        let queue = s.study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200).unwrap();
+        let queue = s
+            .study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200)
+            .unwrap();
         assert_eq!(queue.new.len(), 1);
     }
 
@@ -247,11 +251,15 @@ mod tests {
     fn bury_and_unbury() {
         let (s, _, card_id) = setup();
         s.bury_cards(&[card_id]).unwrap();
-        let queue = s.study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200).unwrap();
+        let queue = s
+            .study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200)
+            .unwrap();
         assert!(queue.new.is_empty());
 
         s.unbury_deck(1).unwrap();
-        let queue = s.study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200).unwrap();
+        let queue = s
+            .study_queue(1, 0, 1_700_000_000_000, 1_700_086_400_000, 20, 200)
+            .unwrap();
         assert_eq!(queue.new.len(), 1);
     }
 

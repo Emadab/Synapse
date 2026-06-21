@@ -158,8 +158,12 @@ pub trait Storage: Send + Sync {
 
     /// Per-deck card-type counts (raw, pre-limit). Keyed by deck_id.
     /// `today_end_ms` gates the learning count (cards due before midnight).
-    fn deck_due_counts(&self, today: i32, now_ms: i64, today_end_ms: i64)
-        -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
+    fn deck_due_counts(
+        &self,
+        today: i32,
+        now_ms: i64,
+        today_end_ms: i64,
+    ) -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
 
     /// `(new_per_day, rev_per_day)` from the deck config's JSON.
     fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)>;
