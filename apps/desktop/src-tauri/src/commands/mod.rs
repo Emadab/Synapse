@@ -4,8 +4,14 @@
 
 pub mod app;
 pub mod browse;
+pub mod maintenance;
+pub mod optimize;
+pub mod plugins;
+pub mod cards;
 pub mod deck;
 pub mod export;
 pub mod import;
+pub mod notetype;
 pub mod stats;
 pub mod study;
+pub mod tags;

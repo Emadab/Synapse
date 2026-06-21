@@ -88,6 +88,8 @@ pub struct RatingPreviews {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SchedConfig {
     pub algorithm: Algorithm,
+    pub new_per_day: u32,
+    pub review_per_day: u32,
     /// Learning steps in minutes (Anki default: 1m, 10m).
     pub learning_steps_min: Vec<u32>,
     /// Relearning steps in minutes (Anki default: 10m).
@@ -117,6 +119,8 @@ impl Default for SchedConfig {
     fn default() -> Self {
         Self {
             algorithm: Algorithm::Sm2,
+            new_per_day: 20,
+            review_per_day: 200,
             learning_steps_min: vec![1, 10],
             relearning_steps_min: vec![10],
             graduating_interval_days: 1,

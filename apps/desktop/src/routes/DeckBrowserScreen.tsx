@@ -1,7 +1,24 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Layers, Plus, Settings, Trash2, Undo2 } from "lucide-react";
-import type { DeckSummary, ImportSummary } from "@synapse/ipc-types";
+import {
+  AlertTriangle,
+  Download,
+  Filter,
+  Layers,
+  Plus,
+  RefreshCw,
+  Settings,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
+import type { DeckSummary, FilteredDeckConfig, ImportSummary } from "@synapse/ipc-types";
+import { ScreenHeader } from "@/components/ScreenHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { Button } from "@/components/ui/button";
+import { DeckOptionsDialog } from "@/components/DeckOptionsDialog";
+import { errorMessage, ipc, isTauri, pickAndImportPackage } from "@/lib/ipc";
+import { queryKeys } from "@/lib/queryKeys";
 
 function CountBadge({ count, color }: { count: number; color: string }) {
   if (count === 0) return null;
@@ -11,11 +28,6 @@ function CountBadge({ count, color }: { count: number; color: string }) {
     </span>
   );
 }
-import { ScreenHeader } from "@/components/ScreenHeader";
-import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/button";
-import { errorMessage, ipc, isTauri, pickAndImportPackage } from "@/lib/ipc";
-import { queryKeys } from "@/lib/queryKeys";
 
 function deckDepth(name: string): number {
   return name.split("::").length - 1;
@@ -25,6 +37,130 @@ function deckLabel(name: string): string {
   const parts = name.split("::");
   return parts[parts.length - 1];
 }
+
+// ── Filtered deck builder dialog ──────────────────────────────────────────────
+
+const ORDER_LABELS = ["Random", "Due date (oldest)", "Added (oldest)", "Interval ↑", "Most lapses"];
+
+function FilteredDeckDialog({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial?: FilteredDeckConfig;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? "Custom Study");
+  const [search, setSearch] = useState(initial?.search ?? "is:due");
+  const [order, setOrder] = useState(initial?.order ?? 0);
+  const [limit, setLimit] = useState(initial?.limit ?? 100);
+
+  const createMut = useMutation({
+    mutationFn: () => ipc.createFilteredDeck(name.trim(), search.trim(), order, limit),
+    onSuccess: () => { onSaved(); onClose(); },
+  });
+
+  const rebuildMut = useMutation({
+    mutationFn: () => ipc.rebuildFiltered(initial!.deck_id),
+    onSuccess: () => { onSaved(); onClose(); },
+  });
+
+  const isRebuild = !!initial;
+  const isPending = createMut.isPending || rebuildMut.isPending;
+  const error = createMut.error ?? rebuildMut.error;
+
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-base font-semibold">
+            {isRebuild ? "Rebuild Filtered Deck" : "New Filtered Deck"}
+          </h2>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="size-4" />
+          </Button>
+        </div>
+
+        <div className="space-y-4">
+          {!isRebuild && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Name</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Search query</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="is:due deck:Spanish"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-mono outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <p className="text-xs text-muted-foreground">
+              Same syntax as the browser search (is:due, deck:, tag:, prop:, etc.)
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Order</label>
+              <select
+                value={order}
+                onChange={(e) => setOrder(Number(e.target.value))}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {ORDER_LABELS.map((label, i) => (
+                  <option key={i} value={i}>{label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Limit</label>
+              <input
+                type="number"
+                min={1}
+                max={9999}
+                value={limit}
+                onChange={(e) => setLimit(Math.max(1, Math.min(9999, Number(e.target.value))))}
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <p className="mt-3 text-sm text-destructive">{errorMessage(error)}</p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button
+            size="sm"
+            disabled={isPending || !search.trim() || (!isRebuild && !name.trim())}
+            onClick={() => isRebuild ? rebuildMut.mutate() : createMut.mutate()}
+          >
+            <RefreshCw className="size-3.5" />
+            {isPending ? "Building…" : isRebuild ? "Rebuild" : "Create"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
 
 export function DeckBrowserScreen() {
   const queryClient = useQueryClient();
@@ -47,31 +183,10 @@ export function DeckBrowserScreen() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [lastImport, setLastImport] = useState<ImportSummary | null>(null);
-
-  const [settingsDeckId, setSettingsDeckId] = useState<number | null>(null);
-  const [settingsNew, setSettingsNew] = useState(20);
-  const [settingsRev, setSettingsRev] = useState(200);
-
-  const openSettings = async (deck: DeckSummary) => {
-    setSettingsDeckId(deck.id);
-    try {
-      const opts = await ipc.getDeckOptions(deck.id);
-      setSettingsNew(opts.new_per_day);
-      setSettingsRev(opts.review_per_day);
-    } catch {
-      setSettingsNew(20);
-      setSettingsRev(200);
-    }
-  };
-
-  const saveOptionsMut = useMutation({
-    mutationFn: ({ id, n, r }: { id: number; n: number; r: number }) =>
-      ipc.setDeckOptions(id, n, r),
-    onSuccess: () => {
-      setSettingsDeckId(null);
-      void invalidateDecks();
-    },
-  });
+  const [pendingDelete, setPendingDelete] = useState<DeckSummary | null>(null);
+  const [optionsDeck, setOptionsDeck] = useState<DeckSummary | null>(null);
+  const [showFilteredDialog, setShowFilteredDialog] = useState(false);
+  const [rebuildTarget, setRebuildTarget] = useState<FilteredDeckConfig | null>(null);
 
   const importMut = useMutation({
     mutationFn: pickAndImportPackage,
@@ -97,6 +212,11 @@ export function DeckBrowserScreen() {
     onSuccess: () => void invalidateDecks(),
   });
 
+  const emptyMut = useMutation({
+    mutationFn: (id: number) => ipc.emptyFiltered(id),
+    onSuccess: () => void invalidateDecks(),
+  });
+
   const undoMut = useMutation({
     mutationFn: () => ipc.undo(),
     onSuccess: () => void invalidateDecks(),
@@ -104,8 +224,13 @@ export function DeckBrowserScreen() {
 
   const decks = decksQuery.data ?? [];
 
+  async function openRebuild(deck: DeckSummary) {
+    const cfg = await ipc.getFilteredConfig(deck.id);
+    if (cfg) setRebuildTarget(cfg);
+  }
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       <ScreenHeader
         title="Decks"
         description="Your collection. Import an Anki deck, or create one to get started."
@@ -126,6 +251,14 @@ export function DeckBrowserScreen() {
               title="Undo the last change"
             >
               <Undo2 /> Undo
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowFilteredDialog(true)}
+              disabled={!tauri}
+              title="Create a filtered (custom study) deck"
+            >
+              <Filter /> Filtered
             </Button>
             <Button onClick={() => setCreating((value) => !value)} disabled={!tauri}>
               <Plus /> New deck
@@ -157,10 +290,7 @@ export function DeckBrowserScreen() {
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setCreating(false);
-                setName("");
-              }}
+              onClick={() => { setCreating(false); setName(""); }}
             >
               Cancel
             </Button>
@@ -170,10 +300,14 @@ export function DeckBrowserScreen() {
         {createMut.isError ? (
           <p className="px-8 py-2 text-sm text-destructive">{errorMessage(createMut.error)}</p>
         ) : null}
-
         {importMut.isError ? (
           <p className="px-8 py-2 text-sm text-destructive">
             Import failed: {errorMessage(importMut.error)}
+          </p>
+        ) : null}
+        {deleteMut.isError ? (
+          <p className="px-8 py-2 text-sm text-destructive">
+            Delete failed: {errorMessage(deleteMut.error)}
           </p>
         ) : null}
 
@@ -205,8 +339,17 @@ export function DeckBrowserScreen() {
                   className="group flex items-center gap-3 px-8 py-3 hover:bg-accent/40"
                   style={{ paddingLeft: `${2 + deckDepth(deck.name) * 1.25}rem` }}
                 >
-                  <Layers className="size-4 shrink-0 text-muted-foreground" />
+                  {deck.is_filtered ? (
+                    <Filter className="size-4 shrink-0 text-purple-500" />
+                  ) : (
+                    <Layers className="size-4 shrink-0 text-muted-foreground" />
+                  )}
                   <span className="flex-1 truncate text-sm font-medium">{deckLabel(deck.name)}</span>
+                  {deck.is_filtered && (
+                    <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                      filtered
+                    </span>
+                  )}
                   <span className="flex items-center gap-1">
                     <CountBadge
                       count={deck.new_count}
@@ -221,76 +364,53 @@ export function DeckBrowserScreen() {
                       color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
                     />
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Settings for ${deck.name}`}
-                    className="opacity-0 transition-opacity group-hover:opacity-100"
-                    onClick={() =>
-                      settingsDeckId === deck.id
-                        ? setSettingsDeckId(null)
-                        : void openSettings(deck)
-                    }
-                  >
-                    <Settings className="size-4" />
-                  </Button>
+                  {deck.is_filtered && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Rebuild ${deck.name}`}
+                        className="opacity-0 transition-opacity group-hover:opacity-100"
+                        onClick={() => void openRebuild(deck)}
+                        title="Rebuild filtered deck"
+                      >
+                        <RefreshCw className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Empty ${deck.name}`}
+                        className="opacity-0 transition-opacity group-hover:opacity-100"
+                        onClick={() => emptyMut.mutate(deck.id)}
+                        disabled={emptyMut.isPending}
+                        title="Return all cards to original decks"
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </>
+                  )}
+                  {!deck.is_filtered && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Settings for ${deck.name}`}
+                      className="opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={() => setOptionsDeck(deck)}
+                    >
+                      <Settings className="size-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
                     aria-label={`Delete ${deck.name}`}
                     className="opacity-0 transition-opacity group-hover:opacity-100"
-                    onClick={() => deleteMut.mutate(deck.id)}
+                    onClick={() => setPendingDelete(deck)}
                     disabled={deleteMut.isPending}
                   >
                     <Trash2 className="text-destructive" />
                   </Button>
                 </li>
-                {settingsDeckId === deck.id && (
-                  <li className="border-t border-border bg-secondary/40">
-                    <form
-                      className="flex flex-wrap items-center gap-3 px-8 py-3"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        saveOptionsMut.mutate({ id: deck.id, n: settingsNew, r: settingsRev });
-                      }}
-                    >
-                      <span className="text-xs font-medium text-muted-foreground">Daily limits:</span>
-                      <label className="flex items-center gap-1.5 text-xs">
-                        New
-                        <input
-                          type="number"
-                          min={0}
-                          max={9999}
-                          value={settingsNew}
-                          onChange={(e) => setSettingsNew(Number(e.target.value))}
-                          className="h-7 w-20 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        />
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs">
-                        Reviews
-                        <input
-                          type="number"
-                          min={0}
-                          max={9999}
-                          value={settingsRev}
-                          onChange={(e) => setSettingsRev(Number(e.target.value))}
-                          className="h-7 w-20 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        />
-                      </label>
-                      <Button type="submit" size="sm" disabled={saveOptionsMut.isPending}>
-                        Save
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSettingsDeckId(null)}
-                      >
-                        Cancel
-                      </Button>
-                    </form>
-                  </li>
-                )}
               </Fragment>
             ))}
           </ul>
@@ -302,6 +422,76 @@ export function DeckBrowserScreen() {
           </div>
         ) : null}
       </div>
+
+      {pendingDelete && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+          onClick={() => setPendingDelete(null)}
+        >
+          <div
+            className="mx-4 w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                <AlertTriangle className="size-5 text-destructive" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold">Delete deck?</p>
+                <p className="text-xs text-muted-foreground">
+                  {pendingDelete.is_filtered
+                    ? "Cards will be returned to their original decks first."
+                    : "This cannot be undone."}
+                </p>
+              </div>
+            </div>
+            <p className="mb-6 rounded-md bg-secondary/60 px-3 py-2 text-sm font-medium">
+              {pendingDelete.name}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setPendingDelete(null)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                disabled={deleteMut.isPending}
+                onClick={() => {
+                  deleteMut.mutate(pendingDelete.id);
+                  setPendingDelete(null);
+                }}
+              >
+                <Trash2 className="size-3.5" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {optionsDeck && (
+        <DeckOptionsDialog
+          deckId={optionsDeck.id}
+          deckName={optionsDeck.name}
+          onClose={() => setOptionsDeck(null)}
+          onSaved={() => void invalidateDecks()}
+        />
+      )}
+
+      {showFilteredDialog && (
+        <FilteredDeckDialog
+          onClose={() => setShowFilteredDialog(false)}
+          onSaved={() => void invalidateDecks()}
+        />
+      )}
+
+      {rebuildTarget && (
+        <FilteredDeckDialog
+          initial={rebuildTarget}
+          onClose={() => setRebuildTarget(null)}
+          onSaved={() => void invalidateDecks()}
+        />
+      )}
     </div>
   );
 }

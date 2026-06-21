@@ -1,11 +1,13 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { AppShell } from "@/app/AppShell";
 import { RouteError } from "@/components/RouteError";
+import { AddScreen } from "@/routes/AddScreen";
 import { DeckBrowserScreen } from "@/routes/DeckBrowserScreen";
 import { StudyScreen } from "@/routes/StudyScreen";
 import { BrowseScreen } from "@/routes/BrowseScreen";
 import { StatsScreen } from "@/routes/StatsScreen";
 import { SettingsScreen } from "@/routes/SettingsScreen";
+import { NotetypeScreen } from "@/routes/NotetypeScreen";
 
 const rootRoute = createRootRoute({ component: AppShell });
 
@@ -35,10 +37,22 @@ const statsRoute = createRoute({
   component: StatsScreen,
   errorComponent,
 });
+const addRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/add",
+  component: AddScreen,
+  errorComponent,
+});
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
   component: SettingsScreen,
+  errorComponent,
+});
+const notetypesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/notetypes",
+  component: NotetypeScreen,
   errorComponent,
 });
 
@@ -46,8 +60,10 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   studyRoute,
   browseRoute,
+  addRoute,
   statsRoute,
   settingsRoute,
+  notetypesRoute,
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });

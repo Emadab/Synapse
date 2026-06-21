@@ -22,7 +22,6 @@ pub fn dump_collection(conn: &Connection) -> CoreResult<CanonicalModel> {
         notes: dump_notes(conn)?,
         cards: dump_cards(conn)?,
         revlog: dump_revlog(conn)?,
-        ..Default::default()
     })
 }
 

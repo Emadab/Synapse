@@ -3,6 +3,7 @@
 use rusqlite::{params, Connection};
 use synapse_core::error::{CoreError, CoreResult};
 use synapse_core::ipc::{DayCount, StatsDto};
+use synapse_core::model::Revlog;
 
 const MS_PER_DAY: i64 = 86_400_000;
 const RETENTION_WINDOW_DAYS: i64 = 30;
@@ -102,6 +103,60 @@ pub fn stats(conn: &Connection, today: i32, now_ms: i64) -> CoreResult<StatsDto>
     stats.suspended_count = count(conn, "SELECT COUNT(*) FROM cards WHERE queue = -1")?;
 
     Ok(stats)
+}
+
+fn row_to_revlog(r: &rusqlite::Row<'_>) -> rusqlite::Result<Revlog> {
+    Ok(Revlog {
+        id: r.get(0)?,
+        card_id: r.get(1)?,
+        usn: r.get(2)?,
+        ease: r.get(3)?,
+        interval: r.get(4)?,
+        last_interval: r.get(5)?,
+        ease_factor: r.get(6)?,
+        taken_ms: r.get(7)?,
+        review_kind: r.get(8)?,
+    })
+}
+
+/// Revlog entries for FSRS weight optimization (review_kind ∈ {0,1,2}).
+/// Pass `Some(deck_id)` to restrict to one deck; `None` for the full collection.
+pub fn revlogs_for_optimize(conn: &Connection, deck_id: Option<i64>) -> CoreResult<Vec<Revlog>> {
+    match deck_id {
+        None => {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT r.id, r.card_id, r.usn, r.ease, r.interval, r.last_interval,
+                            r.ease_factor, r.taken_ms, r.review_kind
+                     FROM revlog r WHERE r.review_kind <= 2 ORDER BY r.card_id, r.id",
+                )
+                .map_err(err)?;
+            let rows: Vec<Revlog> = stmt
+                .query_map([], row_to_revlog)
+                .map_err(err)?
+                .filter_map(|r| r.ok())
+                .collect();
+            Ok(rows)
+        }
+        Some(did) => {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT r.id, r.card_id, r.usn, r.ease, r.interval, r.last_interval,
+                            r.ease_factor, r.taken_ms, r.review_kind
+                     FROM revlog r
+                     JOIN cards c ON c.id = r.card_id
+                     WHERE r.review_kind <= 2 AND c.deck_id = ?1
+                     ORDER BY r.card_id, r.id",
+                )
+                .map_err(err)?;
+            let rows: Vec<Revlog> = stmt
+                .query_map([did], row_to_revlog)
+                .map_err(err)?
+                .filter_map(|r| r.ok())
+                .collect();
+            Ok(rows)
+        }
+    }
 }
 
 #[cfg(test)]

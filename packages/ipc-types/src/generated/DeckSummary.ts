@@ -3,4 +3,4 @@
 /**
  * A deck as shown in the deck browser / sidebar tree, with due-card counts.
  */
-export type DeckSummary = { id: number, name: string, parent_id: number | null, new_count: number, learning_count: number, review_count: number, };
+export type DeckSummary = { id: number, name: string, parent_id: number | null, new_count: number, learning_count: number, review_count: number, is_filtered: boolean, };

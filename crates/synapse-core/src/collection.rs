@@ -10,13 +10,29 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{CoreError, CoreResult};
 use crate::events::{DomainEvent, EventBus, EventSink};
-use crate::ipc::{NoteDetail, NoteOverview, StatsDto};
+use crate::ipc::{
+    AddNoteResult, CardRow, DeckConfig, DeckSummary, FieldRemoveWarning, FilteredDeckConfig,
+    NoteDetail, NoteOverview, NotetypeDetail, NotetypeSummary, StatsDto,
+};
 use crate::model::{CanonicalModel, Deck, ImportSummary, NoteIndexRow, Revlog, StudyCard};
 use crate::ports::{Clock, Storage};
 use crate::scheduling::CardState;
 use crate::undo::UndoLog;
 
 const MS_PER_DAY: i64 = 86_400_000;
+
+/// Proportional-merge decision for interleaving new and review cards: pick a new
+/// card when its stream is no further ahead (by fraction completed) than the
+/// review stream. `*_done` are today's studied counts; `*_remaining` are the
+/// cards left in each stream. Callers guarantee both streams are non-empty.
+fn prefer_new(new_done: u32, new_remaining: u32, rev_done: u32, rev_remaining: u32) -> bool {
+    let new_total = new_done + new_remaining;
+    let rev_total = rev_done + rev_remaining;
+    // Fraction of each stream already completed; smaller = further behind.
+    let new_frac = f64::from(new_done) / f64::from(new_total.max(1));
+    let rev_frac = f64::from(rev_done) / f64::from(rev_total.max(1));
+    new_frac <= rev_frac
+}
 
 pub struct Collection {
     storage: Box<dyn Storage>,
@@ -70,9 +86,10 @@ impl Collection {
     }
 
     /// Decks with per-type card counts `(new, learning, review)`, capped by daily limits.
+    #[allow(clippy::type_complexity)]
     pub fn list_decks_with_counts(&self) -> CoreResult<Vec<(Deck, (u32, u32, u32))>> {
         let decks = self.storage.list_decks()?;
-        let raw_counts = self.storage.deck_due_counts(self.today())?;
+        let raw_counts = self.storage.deck_due_counts(self.today(), self.now_ms())?;
         let all_limits = self.storage.all_deck_limits()?;
         let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
         let studied = self.storage.all_today_studied(today_start_ms)?;
@@ -98,25 +115,64 @@ impl Collection {
     /// Count of studyable cards by type `(new, learning, review)` (respects daily limits).
     pub fn count_due_by_type(&self, deck_id: i64) -> CoreResult<(u32, u32, u32)> {
         let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
-        self.storage.count_due_by_type(deck_id, self.today(), new_limit, review_limit)
+        self.storage
+            .count_due_by_type(deck_id, self.today(), self.now_ms(), new_limit, review_limit)
     }
 
     /// Count of studyable cards in `deck_id` right now (respects daily limits).
     pub fn count_due(&self, deck_id: i64) -> CoreResult<u32> {
         let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
-        self.storage.count_due(deck_id, self.today(), new_limit, review_limit)
+        self.storage
+            .count_due(deck_id, self.today(), self.now_ms(), new_limit, review_limit)
     }
 
     /// The next card to study in a deck, if any (respects daily limits).
+    ///
+    /// Order: learning cards due now (time-critical, soonest first), then a
+    /// proportional interleave of new and review cards so new cards surface
+    /// throughout the session, then — only if nothing else is due — the soonest
+    /// learn-ahead card.
     pub fn next_card(&self, deck_id: i64) -> CoreResult<Option<StudyCard>> {
-        let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
-        match self
-            .storage
-            .due_card_ids(deck_id, self.today(), new_limit, review_limit)?
-            .first()
-        {
-            Some(&id) => self.storage.study_card(id),
+        match self.next_card_id(deck_id)? {
+            Some(id) => self.storage.study_card(id),
             None => Ok(None),
+        }
+    }
+
+    /// Pick the id of the next card to study, applying the queue ordering policy.
+    fn next_card_id(&self, deck_id: i64) -> CoreResult<Option<i64>> {
+        let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
+        let queue =
+            self.storage
+                .study_queue(deck_id, self.today(), self.now_ms(), new_limit, review_limit)?;
+
+        // 1. Learning due now — already ordered soonest-first.
+        if let Some(&id) = queue.learning.first() {
+            return Ok(Some(id));
+        }
+
+        // 2. Proportional interleave of new vs review. Today's studied counts
+        //    pace the ratio: pick whichever stream is proportionally behind.
+        //    The queue is rebuilt each call and `today_studied` advances after
+        //    every answer, so the running ratio stays even without session state.
+        let next_new = queue.new.first().copied();
+        let next_review = queue.review.first().copied();
+        match (next_new, next_review) {
+            (Some(n), Some(r)) => {
+                let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
+                let (new_done, rev_done) = self.storage.today_studied(deck_id, today_start_ms)?;
+                let take_new = prefer_new(
+                    new_done,
+                    queue.new.len() as u32,
+                    rev_done,
+                    queue.review.len() as u32,
+                );
+                Ok(Some(if take_new { n } else { r }))
+            }
+            (Some(n), None) => Ok(Some(n)),
+            (None, Some(r)) => Ok(Some(r)),
+            // 3. Nothing due now — fall back to the soonest learn-ahead card.
+            (None, None) => Ok(queue.learning_ahead),
         }
     }
 
@@ -142,6 +198,102 @@ impl Collection {
             .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
         self.storage
             .set_deck_limits(deck.config_id, new_per_day, rev_per_day, self.now_ms())
+    }
+
+    /// Full scheduling config for a deck, for the options dialog (M14).
+    pub fn get_deck_config(&self, deck_id: i64) -> CoreResult<DeckConfig> {
+        let deck = self
+            .storage
+            .deck_by_id(deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        let s = self.storage.get_deck_config(deck.config_id)?;
+        Ok(DeckConfig {
+            deck_id,
+            config_id: deck.config_id,
+            algorithm: s.algorithm,
+            new_per_day: s.new_per_day,
+            review_per_day: s.review_per_day,
+            learning_steps_min: s.learning_steps_min,
+            graduating_interval_days: s.graduating_interval_days,
+            easy_interval_days: s.easy_interval_days,
+            starting_ease_milli: s.starting_ease_milli,
+            easy_bonus: s.easy_bonus,
+            hard_interval_factor: s.hard_interval_factor,
+            interval_modifier: s.interval_modifier,
+            maximum_interval_days: s.maximum_interval_days,
+            relearning_steps_min: s.relearning_steps_min,
+            lapse_interval_factor: s.lapse_interval_factor,
+            minimum_interval_days: s.minimum_interval_days,
+            leech_threshold: s.leech_threshold,
+            fsrs_weights: s.fsrs_weights.to_vec(),
+            desired_retention: s.desired_retention,
+        })
+    }
+
+    /// Persist full scheduling config for a deck. Validates bounds.
+    pub fn set_deck_config(&self, cfg: &DeckConfig) -> CoreResult<()> {
+        if cfg.starting_ease_milli < 1300 || cfg.starting_ease_milli > 9999 {
+            return Err(CoreError::Invalid("starting ease must be 1300–9999".into()));
+        }
+        if cfg.desired_retention < 0.5 || cfg.desired_retention > 0.99 {
+            return Err(CoreError::Invalid("desired retention must be 0.50–0.99".into()));
+        }
+        if cfg.interval_modifier < 0.01 || cfg.interval_modifier > 9.99 {
+            return Err(CoreError::Invalid("interval modifier must be 0.01–9.99".into()));
+        }
+        if cfg.graduating_interval_days < 1 {
+            return Err(CoreError::Invalid("graduating interval must be ≥ 1".into()));
+        }
+        if cfg.maximum_interval_days < 1 {
+            return Err(CoreError::Invalid("max interval must be ≥ 1".into()));
+        }
+        if cfg.fsrs_weights.len() != 19 {
+            return Err(CoreError::Invalid("FSRS weights must have exactly 19 elements".into()));
+        }
+        let deck = self
+            .storage
+            .deck_by_id(cfg.deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {}", cfg.deck_id)))?;
+        let mut arr = [0.0f64; 19];
+        for (i, &w) in cfg.fsrs_weights.iter().enumerate().take(19) {
+            arr[i] = w;
+        }
+        let sched = crate::scheduling::SchedConfig {
+            algorithm: cfg.algorithm,
+            new_per_day: cfg.new_per_day,
+            review_per_day: cfg.review_per_day,
+            learning_steps_min: cfg.learning_steps_min.clone(),
+            relearning_steps_min: cfg.relearning_steps_min.clone(),
+            graduating_interval_days: cfg.graduating_interval_days,
+            easy_interval_days: cfg.easy_interval_days,
+            starting_ease_milli: cfg.starting_ease_milli,
+            easy_bonus: cfg.easy_bonus,
+            hard_interval_factor: cfg.hard_interval_factor,
+            interval_modifier: cfg.interval_modifier,
+            lapse_interval_factor: cfg.lapse_interval_factor,
+            minimum_interval_days: cfg.minimum_interval_days,
+            maximum_interval_days: cfg.maximum_interval_days,
+            leech_threshold: cfg.leech_threshold,
+            fsrs_weights: arr,
+            desired_retention: cfg.desired_retention,
+        };
+        self.storage.set_deck_config(deck.config_id, &sched, self.now_ms())?;
+        self.events.emit(DomainEvent::DeckChanged { deck_id: cfg.deck_id });
+        Ok(())
+    }
+
+    /// `SchedConfig` for a deck — used by the study commands for per-deck scheduling.
+    pub fn get_sched_config(&self, deck_id: i64) -> CoreResult<crate::scheduling::SchedConfig> {
+        let deck = self
+            .storage
+            .deck_by_id(deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        self.storage.get_deck_config(deck.config_id)
+    }
+
+    /// Unbury all buried cards in `deck_id` (day rollover / session start).
+    pub fn start_study_session(&self, deck_id: i64) -> CoreResult<()> {
+        self.storage.unbury_deck(deck_id)
     }
 
     /// Render inputs + scheduling state for a specific card.
@@ -177,6 +329,59 @@ impl Collection {
         self.storage.index_rows()
     }
 
+    /// Anki-flavoured query → card rows (M16).
+    pub fn search_cards(&self, query: &str, limit: i64) -> CoreResult<Vec<CardRow>> {
+        self.storage.search_cards(query, self.today(), self.clock.now_ms(), limit)
+    }
+
+    /// Delete notes (and their cards + revlogs). Emits SchemaChanged.
+    pub fn delete_notes(&self, note_ids: &[i64]) -> CoreResult<()> {
+        self.storage.delete_notes(note_ids, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    /// Reassign cards to another deck. Emits DeckChanged for the target deck.
+    pub fn move_cards_to_deck(&self, card_ids: &[i64], deck_id: i64) -> CoreResult<()> {
+        self.storage.move_cards_to_deck(card_ids, deck_id)?;
+        self.events.emit(DomainEvent::DeckChanged { deck_id });
+        Ok(())
+    }
+
+    /// Add a tag to a single note (idempotent). Emits NoteUpdated.
+    pub fn add_note_tag_single(&self, note_id: i64, tag: &str) -> CoreResult<()> {
+        self.storage.add_note_tag(note_id, tag, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::NoteUpdated { note_id });
+        Ok(())
+    }
+
+    /// Remove a tag from a single note. Emits NoteUpdated.
+    pub fn remove_note_tag_single(&self, note_id: i64, tag: &str) -> CoreResult<()> {
+        self.storage.remove_note_tag(note_id, tag, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::NoteUpdated { note_id });
+        Ok(())
+    }
+
+    /// Bulk: add a tag to many notes.
+    pub fn bulk_add_tag(&self, note_ids: &[i64], tag: &str) -> CoreResult<()> {
+        let now = self.clock.now_ms();
+        for &id in note_ids {
+            self.storage.add_note_tag(id, tag, now)?;
+            self.events.emit(DomainEvent::NoteUpdated { note_id: id });
+        }
+        Ok(())
+    }
+
+    /// Bulk: remove a tag from many notes.
+    pub fn bulk_remove_tag(&self, note_ids: &[i64], tag: &str) -> CoreResult<()> {
+        let now = self.clock.now_ms();
+        for &id in note_ids {
+            self.storage.remove_note_tag(id, tag, now)?;
+            self.events.emit(DomainEvent::NoteUpdated { note_id: id });
+        }
+        Ok(())
+    }
+
     /// Dump the full collection for export (`.apkg`/`.colpkg`).
     pub fn dump_collection(&self) -> CoreResult<CanonicalModel> {
         self.storage.dump_collection()
@@ -187,17 +392,147 @@ impl Collection {
         self.storage.notes_by_ids(ids)
     }
 
-    /// Persist an answered card's new state + review log, then notify.
+    /// Persist an answered card's new state + review log.
+    /// Also buries siblings and, if lapses crossed the leech threshold, tags the
+    /// note with "leech" and suspends the card. Returns `true` if a leech fired.
     pub fn apply_answer(
         &self,
         card_id: i64,
+        note_id: i64,
         next: &CardState,
         due: i64,
         log: &Revlog,
-    ) -> CoreResult<()> {
+        leech_threshold: u32,
+    ) -> CoreResult<bool> {
         self.storage.apply_answer(card_id, next, due, log)?;
+        // Sibling bury: keep siblings off the queue for the rest of the session.
+        self.storage.bury_siblings(note_id, card_id)?;
+        // Leech detection.
+        let now_ms = self.clock.now_ms();
+        let is_leech = next.lapses > 0 && next.lapses >= leech_threshold;
+        if is_leech {
+            self.storage.add_note_tag(note_id, "leech", now_ms)?;
+            self.storage.suspend_cards(&[card_id])?;
+            self.events.emit(DomainEvent::NoteUpdated { note_id });
+        }
         self.events.emit(DomainEvent::CardAnswered { card_id });
+        Ok(is_leech)
+    }
+
+    /// Suspend cards (sets `queue = -1`).
+    pub fn suspend_cards(&self, card_ids: &[i64]) -> CoreResult<()> {
+        self.storage.suspend_cards(card_ids)?;
+        for &id in card_ids {
+            self.events.emit(DomainEvent::CardAnswered { card_id: id });
+        }
         Ok(())
+    }
+
+    /// Unsuspend cards (restores `queue = type`).
+    pub fn unsuspend_cards(&self, card_ids: &[i64]) -> CoreResult<()> {
+        self.storage.unsuspend_cards(card_ids)?;
+        Ok(())
+    }
+
+    /// Manually bury cards (sets `queue = -2`).
+    pub fn bury_cards(&self, card_ids: &[i64]) -> CoreResult<()> {
+        self.storage.bury_cards(card_ids)?;
+        for &id in card_ids {
+            self.events.emit(DomainEvent::CardAnswered { card_id: id });
+        }
+        Ok(())
+    }
+
+    /// Set the flag (0–7) on a list of cards.
+    pub fn set_card_flag(&self, card_ids: &[i64], flag: u8) -> CoreResult<()> {
+        self.storage.set_card_flag(card_ids, flag)?;
+        Ok(())
+    }
+
+    // ── M17: tag manager ─────────────────────────────────────────────────────
+
+    pub fn list_tags(&self) -> CoreResult<Vec<String>> {
+        self.storage.list_tags()
+    }
+
+    pub fn rename_tag(&self, old_tag: &str, new_tag: &str) -> CoreResult<u32> {
+        let n = self.storage.rename_tag(old_tag, new_tag, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(n)
+    }
+
+    pub fn delete_tag(&self, tag: &str) -> CoreResult<u32> {
+        let n = self.storage.delete_tag(tag, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(n)
+    }
+
+    pub fn merge_tags(&self, sources: Vec<String>, target: &str) -> CoreResult<()> {
+        self.storage.merge_tags(&sources, target, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    // ── M17: filtered decks ───────────────────────────────────────────────────
+
+    pub fn create_filtered_deck(
+        &self,
+        name: &str,
+        search: &str,
+        order: u8,
+        limit: u32,
+    ) -> CoreResult<DeckSummary> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(CoreError::Invalid("deck name is empty".into()));
+        }
+        let deck = self.storage.create_filtered_deck(
+            name,
+            search,
+            order,
+            limit,
+            self.today(),
+            self.clock.now_ms(),
+        )?;
+        let id = deck.id;
+        self.events.emit(DomainEvent::DeckChanged { deck_id: id });
+        Ok(DeckSummary::from(deck))
+    }
+
+    pub fn rebuild_filtered(&self, deck_id: i64) -> CoreResult<u32> {
+        let n = self.storage.rebuild_filtered(deck_id, self.today(), self.clock.now_ms())?;
+        self.events.emit(DomainEvent::DeckChanged { deck_id });
+        Ok(n)
+    }
+
+    pub fn empty_filtered(&self, deck_id: i64) -> CoreResult<()> {
+        self.storage.empty_filtered(deck_id, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::DeckChanged { deck_id });
+        Ok(())
+    }
+
+    pub fn get_filtered_config(&self, deck_id: i64) -> CoreResult<Option<FilteredDeckConfig>> {
+        self.storage.get_filtered_config(deck_id)
+    }
+
+    pub fn integrity_check(&self) -> CoreResult<Vec<String>> {
+        self.storage.integrity_check()
+    }
+
+    pub fn optimize(&self) -> CoreResult<()> {
+        self.storage.optimize()
+    }
+
+    pub fn note_media_refs(&self) -> CoreResult<Vec<String>> {
+        self.storage.note_media_refs()
+    }
+
+    pub fn backup_db(&self, dest_path: &std::path::Path) -> CoreResult<()> {
+        self.storage.backup_db(dest_path)
+    }
+
+    pub fn revlogs_for_optimize(&self, deck_id: Option<i64>) -> CoreResult<Vec<crate::model::Revlog>> {
+        self.storage.revlogs_for_optimize(deck_id)
     }
 
     /// Shared handle to the event bus, for wiring external subscribers
@@ -227,7 +562,7 @@ impl Collection {
         let deck = self.storage.create_deck(name, self.clock.now_ms())?;
         let id = deck.id;
         self.record_undo(format!("Create deck \"{name}\""), move |s, _now| {
-            s.remove_deck(id)
+            s.remove_deck(id).map(|_| ())
         });
         self.events.emit(DomainEvent::DeckChanged { deck_id: id });
         Ok(deck)
@@ -256,9 +591,14 @@ impl Collection {
             .storage
             .deck_by_id(id)?
             .ok_or_else(|| CoreError::NotFound(format!("deck {id}")))?;
-        self.storage.remove_deck(id)?;
+        // Return gathered cards before deleting a filtered deck.
+        if deck.is_filtered {
+            self.storage.empty_filtered(id, self.clock.now_ms())?;
+        }
+        // Cascades to sub-decks + their cards; the returned snapshot drives undo.
+        let removed = self.storage.remove_deck(id)?;
         let description = format!("Delete deck \"{}\"", deck.name);
-        self.record_undo(description, move |s, _now| s.insert_deck(&deck));
+        self.record_undo(description, move |s, _now| s.restore_deck(&removed));
         self.events.emit(DomainEvent::DeckChanged { deck_id: id });
         Ok(())
     }
@@ -270,6 +610,144 @@ impl Collection {
         let summary = self.storage.import(model)?;
         self.events.emit(DomainEvent::SchemaChanged);
         Ok(summary)
+    }
+
+    /// All note types with their ordered field names, for the Add Note picker.
+    pub fn list_notetypes(&self) -> CoreResult<Vec<NotetypeSummary>> {
+        let notetypes = self.storage.list_notetypes()?;
+        let mut result = Vec::with_capacity(notetypes.len());
+        for nt in notetypes {
+            let fields = self.storage.fields_for_notetype(nt.id)?;
+            result.push(NotetypeSummary {
+                id: nt.id,
+                name: nt.name,
+                kind: nt.kind,
+                field_names: fields.into_iter().map(|f| f.name).collect(),
+            });
+        }
+        Ok(result)
+    }
+
+    /// Add a note to `deck_id`, generating cards from the notetype's templates.
+    /// Returns the result DTO (`note_id` + `cards_added`).
+    pub fn add_note(
+        &self,
+        notetype_id: i64,
+        deck_id: i64,
+        fields: &[String],
+        tags: &[String],
+    ) -> CoreResult<AddNoteResult> {
+        self.storage
+            .deck_by_id(deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        let (note_id, cards_added) =
+            self.storage
+                .add_note_with_cards(notetype_id, deck_id, fields, tags, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::NoteAdded { note_id });
+        Ok(AddNoteResult { note_id, cards_added })
+    }
+
+    // ── Note-type editor ──────────────────────────────────────────────────────
+
+    pub fn get_notetype_detail(&self, notetype_id: i64) -> CoreResult<Option<NotetypeDetail>> {
+        self.storage.get_notetype_detail(notetype_id)
+    }
+
+    pub fn create_notetype(&self, name: &str, kind: i64) -> CoreResult<NotetypeDetail> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(CoreError::Invalid("note type name is empty".into()));
+        }
+        let id = self.storage.create_notetype(name, kind, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        self.storage
+            .get_notetype_detail(id)?
+            .ok_or_else(|| CoreError::NotFound(format!("notetype {id}")))
+    }
+
+    pub fn delete_notetype(&self, notetype_id: i64) -> CoreResult<()> {
+        self.storage.delete_notetype(notetype_id, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    pub fn rename_notetype(&self, notetype_id: i64, name: &str) -> CoreResult<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(CoreError::Invalid("note type name is empty".into()));
+        }
+        self.storage.rename_notetype(notetype_id, name, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    pub fn add_field(&self, notetype_id: i64, name: &str) -> CoreResult<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(CoreError::Invalid("field name is empty".into()));
+        }
+        self.storage.add_field(notetype_id, name, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    pub fn check_field_remove(&self, notetype_id: i64, ord: i64) -> CoreResult<FieldRemoveWarning> {
+        self.storage.check_field_remove(notetype_id, ord)
+    }
+
+    pub fn remove_field(&self, notetype_id: i64, ord: i64) -> CoreResult<()> {
+        self.storage.remove_field(notetype_id, ord, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    pub fn rename_field(&self, notetype_id: i64, ord: i64, name: &str) -> CoreResult<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(CoreError::Invalid("field name is empty".into()));
+        }
+        self.storage.rename_field(notetype_id, ord, name, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    pub fn reorder_fields(&self, notetype_id: i64, new_order: Vec<i64>) -> CoreResult<()> {
+        self.storage.reorder_fields(notetype_id, &new_order, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    pub fn add_template(
+        &self,
+        notetype_id: i64,
+        name: &str,
+        qfmt: &str,
+        afmt: &str,
+    ) -> CoreResult<()> {
+        self.storage
+            .add_template(notetype_id, name, qfmt, afmt, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    pub fn remove_template(&self, notetype_id: i64, ord: i64) -> CoreResult<()> {
+        self.storage.remove_template(notetype_id, ord, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    pub fn save_template(
+        &self,
+        notetype_id: i64,
+        ord: i64,
+        name: &str,
+        qfmt: &str,
+        afmt: &str,
+    ) -> CoreResult<()> {
+        self.storage
+            .save_template(notetype_id, ord, name, qfmt, afmt, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
     }
 
     /// Description of the next undoable operation, if any.
@@ -306,6 +784,7 @@ impl Collection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Field, Notetype, Template};
     use crate::ports::FixedClock;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -372,8 +851,18 @@ mod tests {
             deck.mod_ms = now_ms;
             Ok(())
         }
-        fn remove_deck(&self, id: i64) -> CoreResult<()> {
-            self.decks.lock().unwrap().retain(|d| d.id != id);
+        fn remove_deck(&self, id: i64) -> CoreResult<crate::ports::RemovedDeck> {
+            let mut decks = self.decks.lock().unwrap();
+            let removed: Vec<Deck> = decks.iter().filter(|d| d.id == id).cloned().collect();
+            decks.retain(|d| d.id != id);
+            Ok(crate::ports::RemovedDeck {
+                decks: removed,
+                cards: vec![],
+                notes: vec![],
+            })
+        }
+        fn restore_deck(&self, removed: &crate::ports::RemovedDeck) -> CoreResult<()> {
+            self.decks.lock().unwrap().extend(removed.decks.iter().cloned());
             Ok(())
         }
         fn insert_deck(&self, deck: &Deck) -> CoreResult<()> {
@@ -394,19 +883,21 @@ mod tests {
         fn ensure_collection(&self, _now_ms: i64) -> CoreResult<i64> {
             Ok(0)
         }
-        fn due_card_ids(
+        fn study_queue(
             &self,
             _deck_id: i64,
             _today: i32,
+            _now_ms: i64,
             _new_limit: u32,
             _review_limit: u32,
-        ) -> CoreResult<Vec<i64>> {
-            Ok(vec![])
+        ) -> CoreResult<crate::ports::StudyQueue> {
+            Ok(crate::ports::StudyQueue::default())
         }
         fn count_due_by_type(
             &self,
             _deck_id: i64,
             _today: i32,
+            _now_ms: i64,
             _new_limit: u32,
             _review_limit: u32,
         ) -> CoreResult<(u32, u32, u32)> {
@@ -416,6 +907,7 @@ mod tests {
             &self,
             _deck_id: i64,
             _today: i32,
+            _now_ms: i64,
             _new_limit: u32,
             _review_limit: u32,
         ) -> CoreResult<u32> {
@@ -424,6 +916,7 @@ mod tests {
         fn deck_due_counts(
             &self,
             _today: i32,
+            _now_ms: i64,
         ) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
             Ok(std::collections::HashMap::new())
         }
@@ -447,6 +940,17 @@ mod tests {
             _config_id: i64,
             _new_per_day: u32,
             _rev_per_day: u32,
+            _now_ms: i64,
+        ) -> CoreResult<()> {
+            Ok(())
+        }
+        fn get_deck_config(&self, _config_id: i64) -> CoreResult<crate::scheduling::SchedConfig> {
+            Ok(crate::scheduling::SchedConfig::default())
+        }
+        fn set_deck_config(
+            &self,
+            _config_id: i64,
+            _config: &crate::scheduling::SchedConfig,
             _now_ms: i64,
         ) -> CoreResult<()> {
             Ok(())
@@ -490,6 +994,117 @@ mod tests {
         fn dump_collection(&self) -> CoreResult<CanonicalModel> {
             Ok(CanonicalModel::default())
         }
+        fn list_notetypes(&self) -> CoreResult<Vec<Notetype>> {
+            Ok(vec![])
+        }
+        fn fields_for_notetype(&self, _notetype_id: i64) -> CoreResult<Vec<Field>> {
+            Ok(vec![])
+        }
+        fn templates_for_notetype(&self, _notetype_id: i64) -> CoreResult<Vec<Template>> {
+            Ok(vec![])
+        }
+        fn add_note_with_cards(
+            &self,
+            _notetype_id: i64,
+            _deck_id: i64,
+            _fields: &[String],
+            _tags: &[String],
+            _now_ms: i64,
+        ) -> CoreResult<(i64, u32)> {
+            Ok((1, 0))
+        }
+        fn get_notetype_detail(&self, _notetype_id: i64) -> CoreResult<Option<NotetypeDetail>> {
+            Ok(None)
+        }
+        fn create_notetype(&self, _name: &str, _kind: i64, _now_ms: i64) -> CoreResult<i64> {
+            Ok(1)
+        }
+        fn delete_notetype(&self, _notetype_id: i64, _now_ms: i64) -> CoreResult<()> {
+            Ok(())
+        }
+        fn rename_notetype(&self, _notetype_id: i64, _name: &str, _now_ms: i64) -> CoreResult<()> {
+            Ok(())
+        }
+        fn add_field(&self, _notetype_id: i64, _name: &str, _now_ms: i64) -> CoreResult<()> {
+            Ok(())
+        }
+        fn check_field_remove(
+            &self,
+            _notetype_id: i64,
+            _ord: i64,
+        ) -> CoreResult<FieldRemoveWarning> {
+            Ok(FieldRemoveWarning { notes_with_content: 0 })
+        }
+        fn remove_field(&self, _notetype_id: i64, _ord: i64, _now_ms: i64) -> CoreResult<()> {
+            Ok(())
+        }
+        fn rename_field(
+            &self,
+            _notetype_id: i64,
+            _ord: i64,
+            _name: &str,
+            _now_ms: i64,
+        ) -> CoreResult<()> {
+            Ok(())
+        }
+        fn reorder_fields(
+            &self,
+            _notetype_id: i64,
+            _new_order: &[i64],
+            _now_ms: i64,
+        ) -> CoreResult<()> {
+            Ok(())
+        }
+        fn add_template(
+            &self,
+            _notetype_id: i64,
+            _name: &str,
+            _qfmt: &str,
+            _afmt: &str,
+            _now_ms: i64,
+        ) -> CoreResult<()> {
+            Ok(())
+        }
+        fn remove_template(&self, _notetype_id: i64, _ord: i64, _now_ms: i64) -> CoreResult<()> {
+            Ok(())
+        }
+        fn save_template(
+            &self,
+            _notetype_id: i64,
+            _ord: i64,
+            _name: &str,
+            _qfmt: &str,
+            _afmt: &str,
+            _now_ms: i64,
+        ) -> CoreResult<()> {
+            Ok(())
+        }
+        fn suspend_cards(&self, _card_ids: &[i64]) -> CoreResult<()> { Ok(()) }
+        fn unsuspend_cards(&self, _card_ids: &[i64]) -> CoreResult<()> { Ok(()) }
+        fn bury_cards(&self, _card_ids: &[i64]) -> CoreResult<()> { Ok(()) }
+        fn bury_siblings(&self, _note_id: i64, _answered_card_id: i64) -> CoreResult<()> { Ok(()) }
+        fn unbury_deck(&self, _deck_id: i64) -> CoreResult<()> { Ok(()) }
+        fn set_card_flag(&self, _card_ids: &[i64], _flag: u8) -> CoreResult<()> { Ok(()) }
+        fn add_note_tag(&self, _note_id: i64, _tag: &str, _now_ms: i64) -> CoreResult<()> { Ok(()) }
+        fn search_cards(&self, _q: &str, _today: i32, _now_ms: i64, _limit: i64) -> CoreResult<Vec<crate::ipc::CardRow>> { Ok(vec![]) }
+        fn delete_notes(&self, _note_ids: &[i64], _now_ms: i64) -> CoreResult<()> { Ok(()) }
+        fn move_cards_to_deck(&self, _card_ids: &[i64], _deck_id: i64) -> CoreResult<()> { Ok(()) }
+        fn remove_note_tag(&self, _note_id: i64, _tag: &str, _now_ms: i64) -> CoreResult<()> { Ok(()) }
+        fn list_tags(&self) -> CoreResult<Vec<String>> { Ok(vec![]) }
+        fn rename_tag(&self, _old: &str, _new: &str, _now: i64) -> CoreResult<u32> { Ok(0) }
+        fn delete_tag(&self, _tag: &str, _now: i64) -> CoreResult<u32> { Ok(0) }
+        fn merge_tags(&self, _src: &[String], _tgt: &str, _now: i64) -> CoreResult<()> { Ok(()) }
+        fn create_filtered_deck(&self, _name: &str, _search: &str, _order: u8, _limit: u32, _today: i32, _now: i64) -> CoreResult<Deck> {
+            Ok(Deck { id: 99, name: "filtered".into(), parent_id: None, config_id: 1, mod_ms: 0, usn: -1, collapsed: false, is_filtered: true })
+        }
+        fn rebuild_filtered(&self, _id: i64, _today: i32, _now: i64) -> CoreResult<u32> { Ok(0) }
+        fn empty_filtered(&self, _id: i64, _now: i64) -> CoreResult<()> { Ok(()) }
+        fn get_filtered_config(&self, _id: i64) -> CoreResult<Option<crate::ipc::FilteredDeckConfig>> { Ok(None) }
+        fn integrity_check(&self) -> CoreResult<Vec<String>> { Ok(vec![]) }
+        fn optimize(&self) -> CoreResult<()> { Ok(()) }
+        fn note_media_refs(&self) -> CoreResult<Vec<String>> { Ok(vec![]) }
+        fn backup_db(&self, _dest: &std::path::Path) -> CoreResult<()> { Ok(()) }
+        fn revlogs_for_optimize(&self, _deck_id: Option<i64>) -> CoreResult<Vec<crate::model::Revlog>> { Ok(vec![]) }
     }
 
     fn collection() -> Collection {
@@ -497,6 +1112,29 @@ mod tests {
             Box::new(FakeStorage::default()),
             Arc::new(FixedClock(1_000)),
         )
+    }
+
+    #[test]
+    fn prefer_new_interleaves_evenly() {
+        // Fresh session, equal-sized streams: new goes first (tie → new).
+        assert!(prefer_new(0, 10, 0, 10));
+        // After one new and zero reviews, review is now behind → pick review.
+        assert!(!prefer_new(1, 9, 0, 10));
+        // Driving the merge to completion yields an even split (~half new).
+        let (mut new_done, mut rev_done) = (0u32, 0u32);
+        let (new_total, rev_total) = (10u32, 20u32);
+        for _ in 0..(new_total + rev_total) {
+            let new_rem = new_total - new_done;
+            let rev_rem = rev_total - rev_done;
+            if new_rem == 0 {
+                rev_done += 1;
+            } else if rev_rem == 0 || prefer_new(new_done, new_rem, rev_done, rev_rem) {
+                new_done += 1;
+            } else {
+                rev_done += 1;
+            }
+        }
+        assert_eq!((new_done, rev_done), (new_total, rev_total));
     }
 
     #[test]

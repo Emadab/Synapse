@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "e2e": "pnpm --prefix test-e2e wdio run wdio.conf.ts"
   },
   "dependencies": {
     "@synapse/ipc-types": "workspace:*",
@@ -28,6 +29,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "framer-motion": "^12.40.0",
+    "katex": "^0.17.0",
     "lucide-react": "^1.20.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -41,6 +43,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/katex": "^0.16.8",
     "@types/node": "^25.9.3",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

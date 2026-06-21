@@ -5,13 +5,19 @@
 //! via [`SqliteStorage`]. SQLite is the transactional source of truth;
 //! full-text search lives in Tantivy (`synapse-search`), not here.
 
+pub mod backup;
 pub mod browse;
+pub mod cards;
 pub mod export;
+pub mod filtered;
+pub mod search;
 pub mod import;
 pub mod migrations;
+pub mod notetype;
 pub mod schema;
 pub mod stats;
 pub mod storage;
 pub mod study;
+pub mod tags;
 
 pub use storage::SqliteStorage;

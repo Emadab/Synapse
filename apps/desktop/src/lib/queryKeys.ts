@@ -9,4 +9,6 @@ export const queryKeys = {
   queue: (deckId: string) => ["queue", deckId] as const,
   notes: (query: string) => ["notes", query] as const,
   stats: ["stats"] as const,
+  notetypes: ["notetypes"] as const,
+  notetype: (id: number) => ["notetypes", id] as const,
 };

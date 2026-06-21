@@ -7,6 +7,9 @@
 mod commands;
 
 use std::sync::{Arc, Mutex};
+use tracing_subscriber::{fmt, EnvFilter};
+use synapse_db::backup as db_backup;
+use synapse_plugin::PluginManager;
 
 use percent_encoding::percent_decode_str;
 use synapse_core::{Collection, DomainEvent, SystemClock};
@@ -51,6 +54,23 @@ fn event_name(event: &DomainEvent) -> &'static str {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Structured log subscriber: RUST_LOG env var controls filter; defaults to info.
+    fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .with_target(true)
+        .init();
+
+    // Capture panics → log + write a crash report file next to the DB.
+    std::panic::set_hook(Box::new(|info| {
+        let msg = info.to_string();
+        tracing::error!("PANIC: {msg}");
+        // Best-effort: write to <tmp>/synapse-crash.txt so it survives process death.
+        let path = std::env::temp_dir().join("synapse-crash.txt");
+        let _ = std::fs::write(&path, format!("{msg}\n"));
+    }));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -95,8 +115,40 @@ pub fn run() {
             // Open (or create) the collection under the OS app-data directory.
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let storage = SqliteStorage::open(dir.join("collection.sqlite"))?;
+            let db_path = dir.join("collection.sqlite");
+            let storage = SqliteStorage::open(&db_path)?;
             let collection = Collection::new(Box::new(storage), Arc::new(SystemClock));
+
+            // Auto-backup on startup: create a zip if no backup in the last 24 h.
+            let backup_dir = dir.join("backups");
+            let _ = std::fs::create_dir_all(&backup_dir);
+            let should_backup = db_backup::list_zips(&backup_dir)
+                .ok()
+                .and_then(|v| v.into_iter().next().map(|(_, ms, _)| ms))
+                .map(|last_ms| {
+                    let now_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64;
+                    now_ms - last_ms > 86_400_000
+                })
+                .unwrap_or(true);
+            if should_backup && db_path.is_file() {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as i64;
+                let tmp = backup_dir.join(format!("{now_ms}.tmp.sqlite"));
+                let zip = backup_dir.join(format!("{now_ms}.zip"));
+                if collection.backup_db(&tmp).is_ok() {
+                    let media_dir = dir.join("collection.media");
+                    if db_backup::create_zip(&tmp, &media_dir, &zip).is_ok() {
+                        let _ = db_backup::rotate_backups(&backup_dir, 20);
+                        tracing::info!("auto-backup created: {now_ms}.zip");
+                    }
+                    let _ = std::fs::remove_file(&tmp);
+                }
+            }
 
             // Build the initial search index.
             let index = NoteIndex::new().expect("failed to create search index");
@@ -132,6 +184,14 @@ pub fn run() {
             });
 
             app.manage(collection);
+
+            // Plugin manager — auto-install the bundled sample on first run.
+            let plugin_manager = PluginManager::new(&dir);
+            if let Err(e) = plugin_manager.ensure_sample() {
+                tracing::warn!("could not install sample plugin: {e}");
+            }
+            app.manage(Mutex::new(plugin_manager));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -142,8 +202,8 @@ pub fn run() {
             commands::deck::delete_deck,
             commands::deck::undo,
             commands::deck::undo_status,
-            commands::deck::get_deck_options,
-            commands::deck::set_deck_options,
+            commands::deck::get_deck_config,
+            commands::deck::set_deck_config,
             commands::import::import_package,
             commands::study::get_next_card,
             commands::study::answer_card,
@@ -151,8 +211,53 @@ pub fn run() {
             commands::browse::get_note,
             commands::browse::save_note,
             commands::browse::search_notes,
+            commands::browse::search_cards,
+            commands::browse::delete_notes,
+            commands::browse::move_cards_to_deck,
+            commands::browse::bulk_add_tag,
+            commands::browse::bulk_remove_tag,
+            commands::browse::list_notetypes,
+            commands::browse::add_note,
             commands::export::export_package,
             commands::stats::get_stats,
+            commands::notetype::get_notetype,
+            commands::notetype::create_notetype,
+            commands::notetype::delete_notetype,
+            commands::notetype::rename_notetype,
+            commands::notetype::add_field,
+            commands::notetype::check_field_remove,
+            commands::notetype::remove_field,
+            commands::notetype::rename_field,
+            commands::notetype::reorder_fields,
+            commands::notetype::add_template,
+            commands::notetype::remove_template,
+            commands::notetype::save_template,
+            commands::notetype::preview_template,
+            commands::cards::suspend_cards,
+            commands::cards::unsuspend_cards,
+            commands::cards::bury_cards,
+            commands::cards::set_card_flag,
+            commands::tags::list_tags,
+            commands::tags::rename_tag,
+            commands::tags::delete_tag,
+            commands::tags::merge_tags,
+            commands::tags::create_filtered_deck,
+            commands::tags::rebuild_filtered,
+            commands::tags::empty_filtered,
+            commands::tags::get_filtered_config,
+            commands::maintenance::create_backup,
+            commands::maintenance::list_backups,
+            commands::maintenance::restore_backup,
+            commands::maintenance::check_integrity,
+            commands::maintenance::optimize_db,
+            commands::maintenance::check_media,
+            commands::optimize::optimize_fsrs,
+            commands::optimize::apply_fsrs_weights,
+            commands::plugins::list_plugins,
+            commands::plugins::enable_plugin,
+            commands::plugins::disable_plugin,
+            commands::plugins::install_plugin,
+            commands::plugins::get_plugin_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

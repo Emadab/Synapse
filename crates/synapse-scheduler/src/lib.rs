@@ -10,9 +10,11 @@
 //! that previews and these tests stay deterministic.
 
 mod fsrs;
+pub mod optimizer;
 mod sm2;
 
 pub use fsrs::FsrsScheduler;
+pub use optimizer::{optimize, OptimizeResult, MIN_REVIEWS};
 pub use sm2::Sm2Scheduler;
 
 use synapse_core::scheduling::Scheduler;

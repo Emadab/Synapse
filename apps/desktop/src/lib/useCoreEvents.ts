@@ -19,6 +19,10 @@ export function useCoreEvents() {
       if (payload === "deck-changed" || payload === "schema-changed") {
         void queryClient.invalidateQueries({ queryKey: queryKeys.decks });
       }
+      if (payload === "notes-changed" || payload === "schema-changed") {
+        void queryClient.invalidateQueries({ queryKey: ["notes"] });
+        void queryClient.invalidateQueries({ queryKey: ["notetypes"] });
+      }
       if (
         payload === "card-answered" ||
         payload === "notes-changed" ||

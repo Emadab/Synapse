@@ -19,6 +19,7 @@ pub struct CardRender {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StudyCard {
     pub id: i64,
+    pub note_id: i64,
     pub deck_id: i64,
     pub render: CardRender,
     pub state: CardState,

@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "types": ["@wdio/globals/types", "@wdio/mocha-framework"]
+  },
+  "include": ["**/*.ts"]
+}

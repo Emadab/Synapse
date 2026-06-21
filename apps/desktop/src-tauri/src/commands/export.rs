@@ -20,12 +20,12 @@ pub fn export_package(
     collection: State<'_, Collection>,
     path: String,
 ) -> IpcResult<u32> {
-    let model = collection.dump_collection().map_err(|e| ipc_err(e))?;
+    let model = collection.dump_collection().map_err(ipc_err)?;
 
     let media_dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| ipc_err(e))?
+        .map_err(ipc_err)?
         .join("collection.media");
 
     let media_dir = if media_dir.is_dir() { Some(media_dir) } else { None };
@@ -35,7 +35,7 @@ pub fn export_package(
         Path::new(&path),
         media_dir.as_deref(),
     )
-    .map_err(|e| ipc_err(e))?;
+    .map_err(ipc_err)?;
 
     Ok(count)
 }

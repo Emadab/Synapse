@@ -4,7 +4,7 @@
 //! selection) is read from deck options in a later milestone.
 
 use synapse_core::ipc::{IpcError, IpcErrorKind, StudyCardDto};
-use synapse_core::scheduling::{CardPhase, Interval, SchedConfig, SchedContext};
+use synapse_core::scheduling::{CardPhase, Interval, SchedContext};
 use synapse_core::{Collection, Rating, Revlog, StudyCard};
 use synapse_render::{render, RenderRequest, Template};
 use synapse_scheduler::scheduler_for;
@@ -17,6 +17,9 @@ pub fn get_next_card(
     collection: State<'_, Collection>,
     deck_id: i64,
 ) -> IpcResult<Option<StudyCardDto>> {
+    // Unbury buried cards at session start so siblings from the previous
+    // session are released (manual buried stay buried until tomorrow).
+    collection.start_study_session(deck_id)?;
     match collection.next_card(deck_id)? {
         Some(card) => Ok(Some(present(&collection, card))),
         None => Ok(None),
@@ -35,7 +38,8 @@ pub fn answer_card(
         message: format!("card {card_id}"),
     })?;
 
-    let config = SchedConfig::default();
+    let config = collection.get_sched_config(card.deck_id).unwrap_or_default();
+    let leech_threshold = config.leech_threshold;
     let scheduler = scheduler_for(config.algorithm);
     let today = collection.today();
     let ctx = SchedContext { today, config };
@@ -62,7 +66,7 @@ pub fn answer_card(
         taken_ms: 0,
         review_kind,
     };
-    collection.apply_answer(card_id, &outcome.next, due, &log)?;
+    collection.apply_answer(card_id, card.note_id, &outcome.next, due, &log, leech_threshold)?;
 
     match collection.next_card(card.deck_id)? {
         Some(next) => Ok(Some(present(&collection, next))),
@@ -95,7 +99,7 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
         is_cloze: card.render.is_cloze,
     });
 
-    let config = SchedConfig::default();
+    let config = collection.get_sched_config(card.deck_id).unwrap_or_default();
     let scheduler = scheduler_for(config.algorithm);
     let ctx = SchedContext {
         today: collection.today(),

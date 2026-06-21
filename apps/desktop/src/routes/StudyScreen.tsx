@@ -1,12 +1,21 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Check, Layers } from "lucide-react";
+import { BookOpen, Check, Flag, Layers, MinusCircle, SkipForward, Volume2 } from "lucide-react";
+import renderMathInElement from "katex/contrib/auto-render";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { ipc, isTauri, Rating, type RatingValue } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
-import { resolveCardMedia } from "@/lib/media";
+import { mediaUrl, prepareCard } from "@/lib/renderCard";
+
+const FLAG_COLORS: Record<number, string> = {
+  0: "text-muted-foreground",
+  1: "text-red-500",
+  2: "text-orange-500",
+  3: "text-green-500",
+  4: "text-blue-500",
+};
 
 export function StudyScreen() {
   const tauri = isTauri();
@@ -119,10 +128,19 @@ function Session({
   const queryClient = useQueryClient();
   const [revealed, setRevealed] = useState(false);
   const [answeredCount, setAnsweredCount] = useState(0);
+  const [flagMenuOpen, setFlagMenuOpen] = useState(false);
+  const flagRef = useRef<HTMLDivElement>(null);
 
   const cardQuery = useQuery({
     queryKey: queryKeys.queue(String(deckId)),
     queryFn: () => ipc.getNextCard(deckId),
+    // Poll ONLY while no card is showing, so a matured learning card surfaces
+    // without re-entering the deck. Never refetch while a card is on screen —
+    // that would swap it mid-study and look like an auto-skip.
+    refetchInterval: (query) => (query.state.data == null ? 15000 : false),
+    refetchIntervalInBackground: false,
+    // Don't swap the on-screen card just because the window regained focus.
+    refetchOnWindowFocus: false,
   });
 
   const answerMut = useMutation({
@@ -135,14 +153,100 @@ function Session({
     },
   });
 
+  // Card action mutations — each advances to the next card on success.
+  const advanceAfterAction = (next: typeof cardQuery.data | null) => {
+    queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
+    setRevealed(false);
+  };
+
+  const suspendMut = useMutation({
+    mutationFn: (cardId: number) => ipc.suspendCards([cardId]),
+    onSuccess: () => void queryClient.refetchQueries({ queryKey: queryKeys.queue(String(deckId)) }).then(() => setRevealed(false)),
+  });
+
+  const buryMut = useMutation({
+    mutationFn: (cardId: number) => ipc.buryCards([cardId]),
+    onSuccess: () => void queryClient.refetchQueries({ queryKey: queryKeys.queue(String(deckId)) }).then(() => setRevealed(false)),
+  });
+
+  const flagMut = useMutation({
+    mutationFn: ({ cardId, flag }: { cardId: number; flag: number }) =>
+      ipc.setCardFlag([cardId], flag),
+    onSuccess: () => setFlagMenuOpen(false),
+  });
+
   const hitSessionCap = sessionCap > 0 && answeredCount >= sessionCap;
-
   const card = cardQuery.data ?? null;
+  const actionBusy = suspendMut.isPending || buryMut.isPending || flagMut.isPending;
 
-  // Keyboard: Space/Enter reveals; 1–4 rate once revealed.
+  // Prepared card HTML + extracted sound list.
+  const prepared = card
+    ? {
+        q: prepareCard(card.question, tauri),
+        a: prepareCard(card.answer, tauri),
+      }
+    : null;
+  const currentHtml = prepared ? (revealed ? prepared.a.html : prepared.q.html) : "";
+  const currentSounds = prepared ? (revealed ? prepared.a.sounds : prepared.q.sounds) : [];
+
+  // Audio sequencer: play sounds in document order; autoplay on card change / reveal.
+  const [soundIdx, setSoundIdx] = useState(-1);
+  const cardKey = card?.card_id ?? -1;
+
+  useEffect(() => {
+    setSoundIdx(currentSounds.length > 0 ? 0 : -1);
+  }, [cardKey, revealed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const replayAudio = useCallback(() => {
+    if (currentSounds.length > 0) setSoundIdx(0);
+  }, [currentSounds.length]);
+
+  useEffect(() => {
+    if (!tauri || soundIdx < 0 || soundIdx >= currentSounds.length) return;
+    const audio = new Audio(mediaUrl(currentSounds[soundIdx]));
+    audio.play().catch(() => {});
+    audio.onended = () => setSoundIdx((i) => i + 1);
+    return () => {
+      audio.pause();
+      audio.src = "";
+    };
+  }, [tauri, soundIdx, currentSounds]);
+
+  // KaTeX: run auto-render on card DOM after each HTML swap.
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!cardRef.current) return;
+    renderMathInElement(cardRef.current, {
+      delimiters: [
+        { left: "\\(", right: "\\)", display: false },
+        { left: "\\[", right: "\\]", display: true },
+        { left: "$$", right: "$$", display: true },
+        { left: "$", right: "$", display: false },
+      ],
+      throwOnError: false,
+    });
+  }, [currentHtml]);
+
+  // Close flag menu on outside click.
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (flagRef.current && !flagRef.current.contains(e.target as Node)) {
+        setFlagMenuOpen(false);
+      }
+    };
+    if (flagMenuOpen) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [flagMenuOpen]);
+
+  // Keyboard: Space/Enter reveals; 1–4 rate once revealed; s=suspend b=bury; r=replay.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!card || answerMut.isPending || hitSessionCap) return;
+      if (!card || answerMut.isPending || actionBusy || hitSessionCap) return;
+      if (e.key === "r" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        replayAudio();
+        return;
+      }
       if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         setRevealed(true);
@@ -151,14 +255,23 @@ function Session({
       if (revealed && ["1", "2", "3", "4"].includes(e.key)) {
         e.preventDefault();
         answerMut.mutate({ cardId: card.card_id, rating: Number(e.key) as RatingValue });
+        return;
+      }
+      if (e.key === "s" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        suspendMut.mutate(card.card_id);
+      }
+      if (e.key === "b" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        buryMut.mutate(card.card_id);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [card, revealed, answerMut, hitSessionCap]);
+  }, [card, revealed, answerMut, hitSessionCap, actionBusy, suspendMut, buryMut, replayAudio]);
 
-  const questionHtml = card ? (tauri ? resolveCardMedia(card.question) : card.question) : "";
-  const answerHtml = card ? (tauri ? resolveCardMedia(card.answer) : card.answer) : "";
+  // Unused helper kept for type narrowing.
+  void advanceAfterAction;
 
   return (
     <div className="flex h-full flex-col">
@@ -206,8 +319,9 @@ function Session({
         <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-8">
           <div className="synapse-card flex-1 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto">
             <div
+              ref={cardRef}
               key={card.card_id + (revealed ? "a" : "q")}
-              dangerouslySetInnerHTML={{ __html: revealed ? answerHtml : questionHtml }}
+              dangerouslySetInnerHTML={{ __html: currentHtml }}
             />
           </div>
 
@@ -248,6 +362,76 @@ function Session({
                 Show answer <span className="ml-2 text-xs opacity-70">Space</span>
               </Button>
             )}
+
+            {/* Card actions: audio / suspend / bury / flag */}
+            <div className="mt-3 flex items-center justify-end gap-1">
+              {currentSounds.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                  onClick={replayAudio}
+                  title="Replay audio (r)"
+                >
+                  <Volume2 className="size-3.5" />
+                  Replay
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                disabled={actionBusy}
+                onClick={() => suspendMut.mutate(card.card_id)}
+                title="Suspend card (s)"
+              >
+                <MinusCircle className="size-3.5" />
+                Suspend
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+                disabled={actionBusy}
+                onClick={() => buryMut.mutate(card.card_id)}
+                title="Bury card (b)"
+              >
+                <SkipForward className="size-3.5" />
+                Bury
+              </Button>
+              <div className="relative" ref={flagRef}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  disabled={actionBusy}
+                  onClick={() => setFlagMenuOpen((o) => !o)}
+                  title="Set flag"
+                >
+                  <Flag className="size-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Flag</span>
+                </Button>
+                {flagMenuOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Set flag"
+                    className="absolute bottom-full right-0 mb-1 flex overflow-hidden rounded-lg border border-border bg-popover shadow-md"
+                  >
+                    {[0, 1, 2, 3, 4].map((f) => (
+                      <button
+                        key={f}
+                        role="menuitem"
+                        aria-label={f === 0 ? "Remove flag" : `Flag ${f}`}
+                        className={`p-2 hover:bg-accent ${FLAG_COLORS[f]}`}
+                        onClick={() => flagMut.mutate({ cardId: card.card_id, flag: f })}
+                      >
+                        <Flag className="size-4" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       ) : (

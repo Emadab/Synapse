@@ -37,9 +37,45 @@ pub struct Rendered {
 /// Render a card's question and answer HTML.
 pub fn render(req: &RenderRequest<'_>) -> Rendered {
     let active = req.card_ord + 1;
-    let question = render_side(req.template.qfmt, req, None, active, false);
-    let answer = render_side(req.template.afmt, req, Some(&question), active, true);
+    let question = normalize_latex(&render_side(req.template.qfmt, req, None, active, false));
+    let answer = normalize_latex(&render_side(req.template.afmt, req, Some(&question), active, true));
     Rendered { question, answer }
+}
+
+/// Convert Anki legacy LaTeX delimiters to KaTeX-compatible ones.
+/// * `[latex]…[/latex]` → `\[…\]`
+/// * `[$]…[$]`           → `\(…\)`
+/// * `[$$]…[$$]`         → `\[…\]`
+///
+/// Modern Anki already uses `\(…\)` and `\[…\]`, so most notes are unaffected.
+pub fn normalize_latex(html: &str) -> String {
+    static RE_DISPLAY: OnceLock<Regex> = OnceLock::new();
+    static RE_INLINE: OnceLock<Regex> = OnceLock::new();
+    static RE_DISPLAY2: OnceLock<Regex> = OnceLock::new();
+
+    let re_display = RE_DISPLAY
+        .get_or_init(|| Regex::new(r"(?s)\[latex\](.*?)\[/latex\]").unwrap());
+    let re_inline = RE_INLINE
+        .get_or_init(|| Regex::new(r"(?s)\[\$\](.*?)\[\$\]").unwrap());
+    let re_display2 = RE_DISPLAY2
+        .get_or_init(|| Regex::new(r"(?s)\[\$\$\](.*?)\[\$\$\]").unwrap());
+
+    let s = re_display.replace_all(html, |c: &regex::Captures<'_>| {
+        format!("\\[{}\\]", &c[1])
+    });
+    let s = re_display2.replace_all(&s, |c: &regex::Captures<'_>| {
+        format!("\\[{}\\]", &c[1])
+    });
+    re_inline.replace_all(&s, |c: &regex::Captures<'_>| {
+        format!("\\({}\\)", &c[1])
+    }).into_owned()
+}
+
+/// Extract sound filenames from `[sound:name]` markers, in document order.
+pub fn extract_sounds(html: &str) -> Vec<String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"\[sound:([^\]]+)\]").unwrap());
+    re.captures_iter(html).map(|c| c[1].to_string()).collect()
 }
 
 fn field_value<'a>(fields: &'a [(String, String)], name: &str) -> Option<&'a str> {
@@ -267,6 +303,26 @@ mod tests {
         });
         assert!(r.question.contains("synapse-type-input"));
         assert!(r.answer.contains("answer"));
+    }
+
+    #[test]
+    fn normalize_latex_converts_legacy_forms() {
+        assert_eq!(
+            normalize_latex("[latex]E=mc^2[/latex]"),
+            "\\[E=mc^2\\]"
+        );
+        assert_eq!(normalize_latex("[$]x^2[$]"), "\\(x^2\\)");
+        assert_eq!(normalize_latex("[$$]\\sum n[$$]"), "\\[\\sum n\\]");
+        // Modern forms pass through unchanged.
+        let modern = "\\(x\\) and \\[y\\]";
+        assert_eq!(normalize_latex(modern), modern);
+    }
+
+    #[test]
+    fn extract_sounds_returns_ordered_filenames() {
+        let html = "word [sound:a.mp3] more [sound:b.ogg] end";
+        assert_eq!(extract_sounds(html), vec!["a.mp3", "b.ogg"]);
+        assert_eq!(extract_sounds("no sounds here"), Vec::<String>::new());
     }
 
     #[test]
