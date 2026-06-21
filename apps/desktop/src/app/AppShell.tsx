@@ -65,9 +65,11 @@ export function AppShell() {
 
       <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
         <div className="flex h-14 items-center gap-2.5 px-4">
-          <div className="flex size-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-            S
-          </div>
+          <img
+            src={resolved === "dark" ? "/logos/synapse-icon-mono-white.png" : "/logos/synapse-icon-mono-black.png"}
+            alt="Synapse"
+            className="size-7"
+          />
           <span className="text-sm font-semibold tracking-tight">Synapse</span>
         </div>
 
