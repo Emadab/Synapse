@@ -49,7 +49,7 @@ jobs:
             libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
 
       - name: Import macOS certificate
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-latest' && secrets.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -65,7 +65,7 @@ jobs:
           rm certificate.p12
 
       - name: Import Windows certificate
-        if: matrix.platform == 'windows-latest'
+        if: matrix.platform == 'windows-latest' && secrets.WINDOWS_CERTIFICATE != ''
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
@@ -93,13 +93,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Windows Authenticode
-          WINDOWS_SIGN_COMMAND: >-
-            signtool sign /fd sha256
-            /tr http://timestamp.digicert.com /td sha256
-            /f certificate.pfx
-            /p ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-            __INPUT__
+          # Windows Authenticode — only active when cert secret is set
+          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_CERTIFICATE != '' && format('signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f certificate.pfx /p {0} __INPUT__', secrets.WINDOWS_CERTIFICATE_PASSWORD) || '' }}
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
