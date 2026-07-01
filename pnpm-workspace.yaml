@@ -6,3 +6,5 @@ allowBuilds:
   edgedriver: false
   esbuild: true
   geckodriver: false
+overrides:
+  serialize-javascript@<7.0.3: ">=7.0.3"

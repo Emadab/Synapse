@@ -22,7 +22,7 @@
     "fmt": "prettier --write . && cargo fmt",
     "fmt:check": "prettier --check . && cargo fmt --check"
   },
-  "comment": "Build-script allowlist lives in pnpm-workspace.yaml (onlyBuiltDependencies); pnpm 11 no longer reads it from here.",
+  "comment": "Build-script allowlist and dependency overrides live in pnpm-workspace.yaml; pnpm 11 no longer reads them from here.",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.5.0",
