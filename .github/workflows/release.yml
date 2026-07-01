@@ -26,6 +26,8 @@ jobs:
             artifact_suffix: windows-x86_64
 
     runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -58,11 +60,10 @@ jobs:
           # Tauri updater signing key (required for update manifest signatures)
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS code signing + notarization
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS code signing not yet configured — setting these to empty strings
+          # (GitHub does this automatically for unset secrets) makes the bundler
+          # attempt an ad-hoc codesign with a blank identity and fail. Omit until
+          # real Apple credentials are added.
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
@@ -76,6 +77,9 @@ jobs:
   audit:
     name: Security audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

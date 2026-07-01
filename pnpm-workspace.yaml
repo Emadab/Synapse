@@ -1,5 +1,8 @@
 packages:
   - "apps/*"
+  - "apps/desktop/test-e2e"
   - "packages/*"
 allowBuilds:
+  edgedriver: false
   esbuild: true
+  geckodriver: false
