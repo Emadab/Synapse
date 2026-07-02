@@ -14,6 +14,8 @@ experience, while guaranteeing you can move decks in and out of Anki losslessly.
 - **Offline-first**, native-feeling, keyboard-first
 - **Tauri + React/TypeScript** over a **UI-agnostic Rust core**
 
+![Synapse demo](docs/media/demo.gif)
+
 ## Install
 
 Download the latest release for your platform (Windows, macOS, Linux) from the
