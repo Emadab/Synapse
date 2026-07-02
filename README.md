@@ -1,5 +1,9 @@
 # Synapse
 
+[![CI](https://github.com/Emadab/Synapse/actions/workflows/ci.yml/badge.svg)](https://github.com/Emadab/Synapse/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Emadab/Synapse)](https://github.com/Emadab/Synapse/releases/latest)
+
 > A beautiful, modern spaced-repetition desktop app — fully compatible with Anki.
 
 Synapse wraps Anki's proven scheduling data model in a Linear/Obsidian-grade
@@ -9,6 +13,12 @@ experience, while guaranteeing you can move decks in and out of Anki losslessly.
 - **SM-2 and FSRS** scheduling, switchable per deck
 - **Offline-first**, native-feeling, keyboard-first
 - **Tauri + React/TypeScript** over a **UI-agnostic Rust core**
+
+## Install
+
+Download the latest release for your platform (Windows, macOS, Linux) from the
+[Releases page](https://github.com/Emadab/Synapse/releases). Builds are
+produced and signed by the [release workflow](.github/workflows/release.yml).
 
 ## Architecture
 
@@ -54,4 +64,9 @@ pnpm build            # type-check + production frontend build
 
 ## License
 
-MIT OR Apache-2.0
+[MIT](LICENSE)
+
+---
+
+Synapse is an independent project and is not affiliated with, endorsed by, or
+sponsored by Ankitects Pty Ltd. "Anki" is a trademark of Ankitects Pty Ltd.
