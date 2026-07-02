@@ -1,0 +1,14 @@
+# cargo-audit configuration. See https://docs.rs/cargo-audit/latest/cargo_audit/
+
+[advisories]
+ignore = [
+    # RUSTSEC-2026-0194: quadratic-time duplicate-attribute check in quick-xml
+    # < 0.41.0. Pulled in transitively via tauri-utils -> plist 1.9.0, which
+    # pins quick-xml = "^0.39.2" (plist 1.9.0 is its latest release; no fixed
+    # version is available upstream yet). plist is used by Tauri for
+    # macOS Info.plist handling during bundling — Synapse never parses
+    # user-supplied or otherwise untrusted XML/plist input at runtime, so the
+    # DoS is not reachable in this app. Revisit and drop this ignore once
+    # plist/tauri-utils bump their quick-xml dependency past 0.41.0.
+    "RUSTSEC-2026-0194",
+]
