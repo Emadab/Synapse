@@ -12,7 +12,7 @@
 ## Setup
 
 ```sh
-git clone https://github.com/synapse-srs/synapse
+git clone https://github.com/Emadab/Synapse
 cd synapse
 pnpm install
 ```
@@ -89,7 +89,7 @@ docs: ADR-003 plugin sandbox decision
 
 ## Reporting issues
 
-Open an issue at https://github.com/synapse-srs/synapse/issues with:
+Open an issue at https://github.com/Emadab/Synapse/issues with:
 
 - OS + version
 - Steps to reproduce

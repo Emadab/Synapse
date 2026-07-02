@@ -34,6 +34,11 @@ jobs:
         uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # RUSTSEC-2026-0194/0195: quick-xml DoS advisories (quadratic-time
+          # attribute check / unbounded namespace allocation), pulled in
+          # transitively via tauri-utils -> plist (macOS bundling only,
+          # never parses untrusted input at runtime). See audit.toml.
+          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
 
   web:
     name: Web (lint, types, test, build)

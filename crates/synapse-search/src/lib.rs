@@ -1,84 +1,67 @@
 //! # synapse-search
 //!
-//! Tantivy-backed full-text + faceted search over notes. The query language is
-//! Anki-flavoured: bare words match note text (AND by default), and `tag:`,
-//! `deck:` and `note:` filter by facet (e.g. `tag:verb deck:Spanish hola`).
-//! The index lives in RAM and is rebuilt from `NoteIndexRow`s; the application
-//! keeps it in sync by rebuilding on the relevant `DomainEvent`s. SQLite stays
-//! the transactional source of truth.
+//! SQLite FTS5-backed full-text + faceted search over notes. The query
+//! language is Anki-flavoured: bare words match note text (AND by default),
+//! and `tag:`, `deck:` and `note:` filter by facet (e.g.
+//! `tag:verb deck:Spanish hola`). The index lives in an in-memory SQLite
+//! database and is rebuilt from `NoteIndexRow`s; the application keeps it in
+//! sync by rebuilding on the relevant `DomainEvent`s. The on-disk SQLite
+//! database (via synapse-db) stays the transactional source of truth.
 //!
-//! `is:` selectors (due/new/suspended) depend on live scheduling state and are
-//! intersected at the storage layer — not in the index — so they are not
-//! handled here yet.
+//! `is:` selectors (due/new/suspended) depend on live scheduling state and
+//! are intersected at the storage layer — not in the index — so any
+//! `prefix:value` token that isn't `tag:`/`deck:`/`note:` degrades to a plain
+//! text match rather than being treated as a facet.
 
+use std::cell::RefCell;
+
+use rusqlite::Connection;
 use synapse_core::error::{CoreError, CoreResult};
 use synapse_core::model::NoteIndexRow;
-use tantivy::collector::TopDocs;
-use tantivy::query::QueryParser;
-use tantivy::schema::{Field, Schema, Value, STORED, TEXT};
-use tantivy::{doc, Index, IndexReader, TantivyDocument};
 
-fn err(e: tantivy::TantivyError) -> CoreError {
+fn err(e: rusqlite::Error) -> CoreError {
     CoreError::Other(Box::new(e))
 }
 
 /// In-memory note search index.
 pub struct NoteIndex {
-    index: Index,
-    reader: IndexReader,
-    parser: QueryParser,
-    note_id: Field,
-    text: Field,
-    tag: Field,
-    deck: Field,
-    notetype: Field,
+    conn: RefCell<Connection>,
 }
 
 impl NoteIndex {
     pub fn new() -> CoreResult<Self> {
-        let mut builder = Schema::builder();
-        let note_id = builder.add_i64_field("note_id", STORED);
-        let text = builder.add_text_field("text", TEXT);
-        let tag = builder.add_text_field("tag", TEXT);
-        let deck = builder.add_text_field("deck", TEXT);
-        let notetype = builder.add_text_field("note", TEXT);
-        let schema = builder.build();
-
-        let index = Index::create_in_ram(schema);
-        let reader = index.reader().map_err(err)?;
-        let mut parser = QueryParser::for_index(&index, vec![text]);
-        // Space-separated terms are ANDed, matching Anki.
-        parser.set_conjunction_by_default();
+        let conn = Connection::open_in_memory().map_err(err)?;
+        conn.execute_batch("CREATE VIRTUAL TABLE notes USING fts5(text, tag, deck, note);")
+            .map_err(err)?;
 
         Ok(Self {
-            index,
-            reader,
-            parser,
-            note_id,
-            text,
-            tag,
-            deck,
-            notetype,
+            conn: RefCell::new(conn),
         })
     }
 
     /// Replace the entire index contents with `rows`.
     pub fn rebuild(&self, rows: &[NoteIndexRow]) -> CoreResult<()> {
-        let mut writer = self.index.writer(15_000_000).map_err(err)?;
-        writer.delete_all_documents().map_err(err)?;
-        for row in rows {
-            writer
-                .add_document(doc!(
-                    self.note_id => row.note_id,
-                    self.text => row.text.clone(),
-                    self.tag => row.tags.clone(),
-                    self.deck => row.deck.clone(),
-                    self.notetype => row.notetype.clone(),
-                ))
+        let mut conn = self.conn.borrow_mut();
+        let tx = conn.transaction().map_err(err)?;
+        tx.execute("DELETE FROM notes;", []).map_err(err)?;
+        {
+            let mut stmt = tx
+                .prepare(
+                    "INSERT INTO notes(rowid, text, tag, deck, note) VALUES (?1, ?2, ?3, ?4, ?5);",
+                )
                 .map_err(err)?;
+            for row in rows {
+                stmt.execute(rusqlite::params![
+                    row.note_id,
+                    row.text,
+                    row.tags,
+                    row.deck,
+                    row.notetype,
+                ])
+                .map_err(err)?;
+            }
         }
-        writer.commit().map_err(err)?;
-        self.reader.reload().map_err(err)?;
+        tx.commit().map_err(err)?;
         Ok(())
     }
 
@@ -86,33 +69,75 @@ impl NoteIndex {
     /// query syntax degrades to a plain text search; an unparseable query
     /// yields no results rather than an error.
     pub fn search(&self, query: &str, limit: usize) -> CoreResult<Vec<i64>> {
-        let parsed = self
-            .parser
-            .parse_query(query)
-            .or_else(|_| self.parser.parse_query(&sanitize(query)));
-        let Ok(parsed) = parsed else {
+        let Some(match_expr) = build_match_expr(query) else {
             return Ok(vec![]);
         };
 
-        let searcher = self.reader.searcher();
-        let hits = searcher
-            .search(&parsed, &TopDocs::with_limit(limit))
-            .map_err(err)?;
+        let conn = self.conn.borrow();
+        let mut stmt = match conn
+            .prepare("SELECT rowid FROM notes WHERE notes MATCH ?1 ORDER BY rank LIMIT ?2;")
+        {
+            Ok(stmt) => stmt,
+            Err(_) => return Ok(vec![]),
+        };
 
-        let mut ids = Vec::with_capacity(hits.len());
-        for (_score, address) in hits {
-            let doc: TantivyDocument = searcher.doc(address).map_err(err)?;
-            if let Some(id) = doc.get_first(self.note_id).and_then(|v| v.as_i64()) {
-                ids.push(id);
+        let rows = stmt.query_map(rusqlite::params![match_expr, limit as i64], |r| {
+            r.get::<_, i64>(0)
+        });
+        let rows = match rows {
+            Ok(rows) => rows,
+            Err(_) => return Ok(vec![]),
+        };
+
+        let mut ids = Vec::new();
+        for row in rows {
+            match row {
+                Ok(id) => ids.push(id),
+                Err(_) => return Ok(vec![]),
             }
         }
         Ok(ids)
     }
 }
 
-/// Strip query operators so a malformed query can still match as plain text.
-fn sanitize(query: &str) -> String {
-    query.replace([':', '"', '(', ')', '+', '-', '*'], " ")
+/// Quote `value` as an FTS5 string literal, escaping embedded `"` by
+/// doubling it. This is the injection-safety boundary: no raw user substring
+/// is ever concatenated unquoted into the MATCH expression, so `AND`/`OR`/
+/// `NOT`/`*`/parens inside user input can't hijack the query.
+fn quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
+/// Translate an Anki-flavoured query string into an FTS5 MATCH expression.
+/// Returns `None` if the query has no usable terms.
+fn build_match_expr(query: &str) -> Option<String> {
+    let mut clauses = Vec::new();
+
+    for token in query.split_whitespace() {
+        if let Some((prefix, value)) = token.split_once(':') {
+            if value.is_empty() {
+                continue;
+            }
+            match prefix {
+                "tag" | "deck" | "note" => {
+                    clauses.push(format!("{prefix}:{}", quote(value)));
+                }
+                _ => {
+                    // Unknown facet (e.g. `is:due`): degrade to plain terms.
+                    clauses.push(quote(prefix));
+                    clauses.push(quote(value));
+                }
+            }
+        } else if !token.is_empty() {
+            clauses.push(quote(token));
+        }
+    }
+
+    if clauses.is_empty() {
+        None
+    } else {
+        Some(clauses.join(" AND "))
+    }
 }
 
 #[cfg(test)]
@@ -163,5 +188,13 @@ mod tests {
         let index = index();
         // `is:due` isn't a known field; should not error.
         assert!(index.search("is:due hola", 10).is_ok());
+    }
+
+    #[test]
+    fn special_characters_do_not_error() {
+        let index = index();
+        assert!(index
+            .search("O'Brien \"quoted\" AND (test) * -foo", 10)
+            .is_ok());
     }
 }

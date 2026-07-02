@@ -1,6 +1,6 @@
 [package]
 name = "synapse-search"
-description = "Full-text & faceted search over notes via Tantivy, with an Anki-style query parser."
+description = "Full-text & faceted search over notes via SQLite FTS5, with an Anki-style query parser."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,4 +9,4 @@ repository.workspace = true
 
 [dependencies]
 synapse-core.workspace = true
-tantivy = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
