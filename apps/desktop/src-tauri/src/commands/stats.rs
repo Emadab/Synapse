@@ -5,7 +5,7 @@ use synapse_core::Collection;
 use tauri::State;
 
 #[tauri::command]
-pub fn get_stats(
+pub async fn get_stats(
     collection: State<'_, Collection>,
     deck_id: Option<i64>,
     days: Option<u32>,
