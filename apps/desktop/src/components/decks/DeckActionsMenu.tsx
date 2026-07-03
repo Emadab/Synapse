@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { MoreHorizontal, Pencil, Play, PlusCircle, RefreshCw, Settings, Trash2, X } from "lucide-react";
+import {
+  MoreHorizontal,
+  Pencil,
+  Play,
+  PlusCircle,
+  RefreshCw,
+  Settings,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { DeckSummary } from "@synapse/ipc-types";
 import { dur, ease } from "@/lib/motion";
 

@@ -1,6 +1,22 @@
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import type { AnswerButtons } from "@synapse/ipc-types";
-import { axisProps, categorical, gridProps, tooltipItemStyle, tooltipLabelStyle, tooltipStyle } from "./chartTheme";
+import {
+  axisProps,
+  categorical,
+  gridProps,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+  tooltipStyle,
+} from "./chartTheme";
 import { ExportButton } from "./ExportButton";
 
 const LABELS = ["Again", "Hard", "Good", "Easy"];
@@ -28,7 +44,11 @@ export function AnswerButtonsChart({ buttons }: { buttons: AnswerButtons }) {
           <CartesianGrid {...gridProps} />
           <XAxis dataKey="label" {...axisProps} />
           <YAxis allowDecimals={false} {...axisProps} />
-          <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            itemStyle={tooltipItemStyle}
+            labelStyle={tooltipLabelStyle}
+          />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <Bar dataKey="Learning" fill={categorical[2]} radius={[3, 3, 0, 0]} />
           <Bar dataKey="Young" fill={categorical[0]} radius={[3, 3, 0, 0]} />

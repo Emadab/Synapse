@@ -10,7 +10,14 @@ import {
   YAxis,
 } from "recharts";
 import type { RetentionWeek } from "@synapse/ipc-types";
-import { axisProps, categorical, gridProps, tooltipItemStyle, tooltipLabelStyle, tooltipStyle } from "./chartTheme";
+import {
+  axisProps,
+  categorical,
+  gridProps,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+  tooltipStyle,
+} from "./chartTheme";
 import { ExportButton } from "./ExportButton";
 
 const MIN_SAMPLE = 5;
@@ -40,10 +47,7 @@ export function RetentionChart({
   return (
     <div className="relative">
       <div className="absolute right-0 top-0">
-        <ExportButton
-          filename="retention-weekly"
-          rows={weekly.map((w) => ({ ...w }))}
-        />
+        <ExportButton filename="retention-weekly" rows={weekly.map((w) => ({ ...w }))} />
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
@@ -54,7 +58,11 @@ export function RetentionChart({
             y={goalPct}
             stroke="hsl(var(--muted-foreground))"
             strokeDasharray="4 4"
-            label={{ value: `Goal ${goalPct.toFixed(0)}%`, fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+            label={{
+              value: `Goal ${goalPct.toFixed(0)}%`,
+              fontSize: 10,
+              fill: "hsl(var(--muted-foreground))",
+            }}
           />
           <Tooltip
             contentStyle={tooltipStyle}

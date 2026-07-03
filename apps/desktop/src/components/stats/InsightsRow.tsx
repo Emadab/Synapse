@@ -23,7 +23,15 @@ function busiestWeekday(reviews: DayCount[], day0Ms: number): string | null {
   return WEEKDAYS[maxIdx];
 }
 
-function Insight({ icon: Icon, label, value }: { icon: typeof Flame; label: string; value: string }) {
+function Insight({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Flame;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
       <Icon className="size-4 text-primary" />

@@ -117,7 +117,8 @@ function NavLink({
 }) {
   const matchRoute = useMatchRoute();
   const isActive =
-    !!matchRoute({ to, fuzzy: !exact }) || (!!alsoMatch && !!matchRoute({ to: alsoMatch, fuzzy: true }));
+    !!matchRoute({ to, fuzzy: !exact }) ||
+    (!!alsoMatch && !!matchRoute({ to: alsoMatch, fuzzy: true }));
 
   return (
     <Link

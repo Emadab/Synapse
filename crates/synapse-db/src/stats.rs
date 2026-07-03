@@ -41,7 +41,7 @@ fn count(conn: &Connection, sql: &str) -> CoreResult<u32> {
 fn deck_clause(alias: &str, deck_ids: Option<&[i64]>) -> String {
     match deck_ids {
         None => "1=1".to_string(),
-        Some(ids) if ids.is_empty() => "0=1".to_string(),
+        Some([]) => "0=1".to_string(),
         Some(ids) => {
             let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
             format!("{alias}.deck_id IN ({list})")

@@ -39,7 +39,13 @@ function buildTree(rows: DeckStat[]): DeckNode[] {
       newCount += r.new_count;
       reviews7d += r.reviews_7d;
     }
-    node.rollup = { ...node, total_cards: total, due_today: due, new_count: newCount, reviews_7d: reviews7d };
+    node.rollup = {
+      ...node,
+      total_cards: total,
+      due_today: due,
+      new_count: newCount,
+      reviews_7d: reviews7d,
+    };
     return node.rollup;
   }
   for (const root of roots) rollup(root);
@@ -90,13 +96,16 @@ export function DeckTable({
   const compareByKey = (a: DeckNode, b: DeckNode) => {
     const av = sortKey === "name" ? a.name : a.rollup[sortKey];
     const bv = sortKey === "name" ? b.name : b.rollup[sortKey];
-    const cmp = typeof av === "string" ? av.localeCompare(bv as string) : (av as number) - (bv as number);
+    const cmp =
+      typeof av === "string" ? av.localeCompare(bv as string) : (av as number) - (bv as number);
     return sortDesc ? -cmp : cmp;
   };
 
   const sorted = useMemo(() => {
     function sortSiblings(nodes: DeckNode[]): DeckNode[] {
-      return [...nodes].sort(compareByKey).map((n) => ({ ...n, children: sortSiblings(n.children) }));
+      return [...nodes]
+        .sort(compareByKey)
+        .map((n) => ({ ...n, children: sortSiblings(n.children) }));
     }
     return sortSiblings(tree);
     // eslint-disable-next-line react-hooks/exhaustive-deps

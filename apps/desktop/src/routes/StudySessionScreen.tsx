@@ -148,9 +148,11 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
     }
 
     let cancelled = false;
-    void speak(entry.text, { lang: entry.lang, voices: entry.voices, rate: entry.rate }).then(() => {
-      if (!cancelled) advance();
-    });
+    void speak(entry.text, { lang: entry.lang, voices: entry.voices, rate: entry.rate }).then(
+      () => {
+        if (!cancelled) advance();
+      },
+    );
     return () => {
       cancelled = true;
       cancelSpeech();

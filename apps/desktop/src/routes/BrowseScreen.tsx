@@ -409,7 +409,8 @@ export function BrowseScreen() {
                     <input
                       type="checkbox"
                       ref={(el) => {
-                        if (el) el.indeterminate = selArray.length > 0 && selArray.length < sorted.length;
+                        if (el)
+                          el.indeterminate = selArray.length > 0 && selArray.length < sorted.length;
                       }}
                       checked={selArray.length === sorted.length && sorted.length > 0}
                       onChange={(e) =>

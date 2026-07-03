@@ -7,7 +7,10 @@ const SERVED_SRC_RE =
 /** Rewrite bare media filenames to servable URLs, for showing stored field HTML in the editor. */
 export function toDisplayHtml(html: string, tauri: boolean): string {
   if (!tauri) return html;
-  return html.replace(BARE_SRC_RE, (_, pre: string, name: string) => `${pre}src="${mediaUrl(name)}"`);
+  return html.replace(
+    BARE_SRC_RE,
+    (_, pre: string, name: string) => `${pre}src="${mediaUrl(name)}"`,
+  );
 }
 
 /** Rewrite servable media URLs back to bare filenames, before persisting editor HTML. */

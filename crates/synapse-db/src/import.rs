@@ -262,7 +262,7 @@ pub(crate) fn import(
             }
         }
         done_rows += 1;
-        if done_rows % PROGRESS_STRIDE == 0 {
+        if done_rows.is_multiple_of(PROGRESS_STRIDE) {
             on_progress(done_rows, total_rows);
         }
     }
@@ -331,7 +331,7 @@ pub(crate) fn import(
         };
         card_map.insert(card.id, target);
         done_rows += 1;
-        if done_rows % PROGRESS_STRIDE == 0 {
+        if done_rows.is_multiple_of(PROGRESS_STRIDE) {
             on_progress(done_rows, total_rows);
         }
     }

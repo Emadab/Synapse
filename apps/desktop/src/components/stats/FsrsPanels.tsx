@@ -2,7 +2,14 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Brain } from "lucide-react";
 import type { FsrsStats } from "@synapse/ipc-types";
 import { EmptyState } from "@/components/EmptyState";
-import { axisProps, gridProps, sequential, tooltipItemStyle, tooltipLabelStyle, tooltipStyle } from "./chartTheme";
+import {
+  axisProps,
+  gridProps,
+  sequential,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+  tooltipStyle,
+} from "./chartTheme";
 
 const STABILITY_LABELS = ["<1d", "1-7d", "7-21d", "21-90d", "90-180d", "180-365d", "365d+"];
 
@@ -17,7 +24,10 @@ export function FsrsPanels({ fsrs }: { fsrs: FsrsStats }) {
     );
   }
 
-  const stabilityData = fsrs.stability_buckets.map((count, i) => ({ label: STABILITY_LABELS[i], count }));
+  const stabilityData = fsrs.stability_buckets.map((count, i) => ({
+    label: STABILITY_LABELS[i],
+    count,
+  }));
   const difficultyData = fsrs.difficulty_buckets.map((count, i) => ({ label: `${i + 1}`, count }));
 
   return (
@@ -37,7 +47,11 @@ export function FsrsPanels({ fsrs }: { fsrs: FsrsStats }) {
             <CartesianGrid {...gridProps} />
             <XAxis dataKey="label" {...axisProps} />
             <YAxis allowDecimals={false} {...axisProps} />
-            <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
             <Bar dataKey="count" fill={sequential[3]} radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -49,7 +63,11 @@ export function FsrsPanels({ fsrs }: { fsrs: FsrsStats }) {
             <CartesianGrid {...gridProps} />
             <XAxis dataKey="label" {...axisProps} />
             <YAxis allowDecimals={false} {...axisProps} />
-            <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
             <Bar dataKey="count" fill={sequential[3]} radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

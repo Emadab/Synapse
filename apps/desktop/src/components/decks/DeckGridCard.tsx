@@ -136,9 +136,7 @@ export function DeckGridCard({
         />
       </div>
 
-      {limitOpen && (
-        <IncreaseLimitControl deckId={deck.id} onDone={() => setLimitOpen(false)} />
-      )}
+      {limitOpen && <IncreaseLimitControl deckId={deck.id} onDone={() => setLimitOpen(false)} />}
 
       <Button size="sm" variant={total > 0 ? "default" : "outline"} onClick={onStudy}>
         <Play className="size-3.5" /> Study

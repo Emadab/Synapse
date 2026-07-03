@@ -46,8 +46,7 @@ export const ipc = {
   getDeckConfig: (deckId: number) => invoke<DeckConfig>("get_deck_config", { deckId }),
   setDeckConfig: (config: DeckConfig) => invoke<void>("set_deck_config", { config }),
   getCollectionPrefs: () => invoke<CollectionPrefs>("get_collection_prefs"),
-  setCollectionPrefs: (prefs: CollectionPrefs) =>
-    invoke<void>("set_collection_prefs", { prefs }),
+  setCollectionPrefs: (prefs: CollectionPrefs) => invoke<void>("set_collection_prefs", { prefs }),
   setLocalOffset: (minutes: number) => invoke<void>("set_local_offset", { minutes }),
 
   // Today's new-card limit override (Anki-style "increase today's limit")
@@ -61,8 +60,7 @@ export const ipc = {
   // Media (editor image/audio insert)
   saveMedia: (bytes: Uint8Array, filename: string) =>
     invoke<string>("save_media", { bytes: Array.from(bytes), filename }),
-  saveMediaFromPath: (sourcePath: string) =>
-    invoke<string>("save_media_from_path", { sourcePath }),
+  saveMediaFromPath: (sourcePath: string) => invoke<string>("save_media_from_path", { sourcePath }),
 
   // Study
   getNextCard: (deckId: number) => invoke<StudyCardDto | null>("get_next_card", { deckId }),

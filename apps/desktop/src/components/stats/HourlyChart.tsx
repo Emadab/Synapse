@@ -1,6 +1,21 @@
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import type { HourlyStat } from "@synapse/ipc-types";
-import { gridProps, sequential, tooltipItemStyle, tooltipLabelStyle, tooltipStyle } from "./chartTheme";
+import {
+  gridProps,
+  sequential,
+  tooltipItemStyle,
+  tooltipLabelStyle,
+  tooltipStyle,
+} from "./chartTheme";
 import { ExportButton } from "./ExportButton";
 
 // Higher-contrast tick style than the shared `axisProps` — this chart's bars
@@ -55,8 +70,12 @@ export function HourlyChart({ hourly }: { hourly: HourlyStat[] }) {
             itemStyle={tooltipItemStyle}
             labelStyle={tooltipLabelStyle}
             formatter={(value, _name, item) => {
-              const rate = (item?.payload as { passRate: number | null } | undefined)?.passRate ?? null;
-              return [`${value} reviews${rate !== null ? `, ${rate.toFixed(0)}% passed` : ""}`, "Hour"];
+              const rate =
+                (item?.payload as { passRate: number | null } | undefined)?.passRate ?? null;
+              return [
+                `${value} reviews${rate !== null ? `, ${rate.toFixed(0)}% passed` : ""}`,
+                "Hour",
+              ];
             }}
           />
           <Bar dataKey="total" radius={[3, 3, 0, 0]}>

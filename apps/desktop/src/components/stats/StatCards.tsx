@@ -26,7 +26,15 @@ function CountUp({ value, format }: { value: number; format?: (n: number) => str
   return <motion.span>{text}</motion.span>;
 }
 
-function StatCard({ label, value, format }: { label: string; value: number; format?: (n: number) => string }) {
+function StatCard({
+  label,
+  value,
+  format,
+}: {
+  label: string;
+  value: number;
+  format?: (n: number) => string;
+}) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

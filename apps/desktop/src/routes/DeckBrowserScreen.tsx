@@ -4,7 +4,12 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { listen } from "@tauri-apps/api/event";
 import { AnimatePresence, motion } from "framer-motion";
 import { Download, Filter, LayoutGrid, Layers, List, Plus, Sparkles, Undo2 } from "lucide-react";
-import type { DeckSummary, FilteredDeckConfig, ImportProgress, ImportSummary } from "@synapse/ipc-types";
+import type {
+  DeckSummary,
+  FilteredDeckConfig,
+  ImportProgress,
+  ImportSummary,
+} from "@synapse/ipc-types";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -28,7 +33,13 @@ const LAYOUT_OPTIONS: { value: HomeLayout; icon: typeof List; label: string }[] 
   { value: "hero", icon: Sparkles, label: "List + hero" },
 ];
 
-function LayoutSwitcher({ value, onChange }: { value: HomeLayout; onChange: (v: HomeLayout) => void }) {
+function LayoutSwitcher({
+  value,
+  onChange,
+}: {
+  value: HomeLayout;
+  onChange: (v: HomeLayout) => void;
+}) {
   return (
     <div className="flex items-center gap-0.5 rounded-md border border-border bg-secondary/50 p-0.5">
       {LAYOUT_OPTIONS.map(({ value: v, icon: Icon, label }) => (
@@ -293,11 +304,7 @@ export function DeckBrowserScreen() {
             <motion.ul variants={staggerList} initial="hidden" animate="show">
               <AnimatePresence>
                 {decks.map((deck: DeckSummary) => (
-                  <motion.li
-                    key={deck.id}
-                    variants={listItem}
-                    exit={{ opacity: 0, x: -16 }}
-                  >
+                  <motion.li key={deck.id} variants={listItem} exit={{ opacity: 0, x: -16 }}>
                     <DeckRow
                       deck={deck}
                       onStudy={() => studyDeck(deck)}

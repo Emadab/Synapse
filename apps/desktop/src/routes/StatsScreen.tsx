@@ -38,7 +38,11 @@ export function StatsScreen() {
     void navigate({ search: (prev) => ({ ...prev, range: r === "all" ? undefined : r }) });
   };
 
-  const decksQuery = useQuery({ queryKey: queryKeys.decks, queryFn: ipc.listDecks, enabled: tauri });
+  const decksQuery = useQuery({
+    queryKey: queryKeys.decks,
+    queryFn: ipc.listDecks,
+    enabled: tauri,
+  });
   const statsQuery = useQuery({
     queryKey: queryKeys.stats(deckId, days),
     queryFn: () => ipc.getStats(deckId, days),
@@ -88,7 +92,10 @@ function Dashboard({
   stats: StatsDto;
   onSelectDeck: (deckId: number) => void;
 }) {
-  const today = useMemo(() => Math.floor((Date.now() - stats.day0_ms) / 86_400_000), [stats.day0_ms]);
+  const today = useMemo(
+    () => Math.floor((Date.now() - stats.day0_ms) / 86_400_000),
+    [stats.day0_ms],
+  );
   const streaks = useMemo(() => computeStreaks(stats.reviews, today), [stats.reviews, today]);
 
   return (
@@ -114,7 +121,11 @@ function Dashboard({
 
       <motion.div variants={listItem}>
         <Panel title="Retention over time">
-          <RetentionChart weekly={stats.retention_weekly} goalPct={stats.retention_goal_pct} day0Ms={stats.day0_ms} />
+          <RetentionChart
+            weekly={stats.retention_weekly}
+            goalPct={stats.retention_goal_pct}
+            day0Ms={stats.day0_ms}
+          />
         </Panel>
       </motion.div>
 

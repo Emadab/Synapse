@@ -529,9 +529,7 @@ export function NotetypeScreen() {
               {activeTab === "styling" && (
                 <div className="flex min-w-0 flex-1 overflow-hidden">
                   <div className="flex w-1/2 flex-col gap-3 overflow-auto border-r border-border p-4">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Card CSS
-                    </label>
+                    <label className="text-xs font-medium text-muted-foreground">Card CSS</label>
                     <textarea
                       className="h-full min-h-64 w-full resize-none rounded border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
                       value={cssDraft}

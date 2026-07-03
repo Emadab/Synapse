@@ -39,7 +39,11 @@ export function MaturityDonut({ stats }: { stats: StatsDto }) {
             <Cell key={entry.name} fill={MATURITY_COLORS[entry.name]} />
           ))}
         </Pie>
-        <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+        <Tooltip
+          contentStyle={tooltipStyle}
+          itemStyle={tooltipItemStyle}
+          labelStyle={tooltipLabelStyle}
+        />
         <Legend wrapperStyle={{ fontSize: 12 }} />
       </PieChart>
     </ResponsiveContainer>

@@ -51,7 +51,10 @@ export function HomeHero({
     enabled: tauri,
   });
 
-  const dueTotal = decks.reduce((sum, d) => sum + d.new_count + d.learning_count + d.review_count, 0);
+  const dueTotal = decks.reduce(
+    (sum, d) => sum + d.new_count + d.learning_count + d.review_count,
+    0,
+  );
   const nextDueDeck = decks.find((d) => d.new_count + d.learning_count + d.review_count > 0);
 
   const stats = statsQuery.data;

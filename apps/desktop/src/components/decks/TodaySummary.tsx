@@ -6,7 +6,8 @@ import type { DeckSummary } from "@synapse/ipc-types";
  * over each deck's subtree, so summing every row would double-count.
  */
 export function TodaySummary({ decks }: { decks: DeckSummary[] }) {
-  if (decks.length === 0) return "Your collection. Import an Anki deck, or create one to get started.";
+  if (decks.length === 0)
+    return "Your collection. Import an Anki deck, or create one to get started.";
 
   const topLevel = decks.filter((d) => d.parent_id === null);
   const totals = topLevel.reduce(

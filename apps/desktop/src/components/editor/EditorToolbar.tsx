@@ -139,7 +139,9 @@ export function EditorToolbar({
   let mathPreview = "";
   let mathError = false;
   try {
-    mathPreview = mathSrc ? katex.renderToString(mathSrc, { displayMode: mathDisplay, throwOnError: true }) : "";
+    mathPreview = mathSrc
+      ? katex.renderToString(mathSrc, { displayMode: mathDisplay, throwOnError: true })
+      : "";
   } catch {
     mathError = true;
   }

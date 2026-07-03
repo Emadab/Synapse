@@ -2,10 +2,26 @@ import type { DayCount } from "@synapse/ipc-types";
 import { sequential } from "./chartTheme";
 
 const DEFAULT_WEEKS = 52;
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 /** Current + longest consecutive-day streaks, counting back from `today` (collection-relative day). */
-export function computeStreaks(reviews: DayCount[], today: number): { current: number; longest: number } {
+export function computeStreaks(
+  reviews: DayCount[],
+  today: number,
+): { current: number; longest: number } {
   const days = new Set(reviews.filter((d) => d.count > 0).map((d) => d.day));
 
   let current = 0;
