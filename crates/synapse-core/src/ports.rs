@@ -205,6 +205,15 @@ pub trait Storage: Send + Sync {
     /// Persist full scheduling config for a `deck_config` row.
     fn set_deck_config(&self, config_id: i64, config: &SchedConfig, now_ms: i64) -> CoreResult<()>;
 
+    /// Extra new-card allowance for `deck_id` on collection-day `day` (0 if none set).
+    fn day_extra_new(&self, deck_id: i64, day: i32) -> CoreResult<u32>;
+
+    /// Extra new-card allowances for every deck on collection-day `day`, keyed by deck_id.
+    fn all_day_extra_new(&self, day: i32) -> CoreResult<HashMap<i64, u32>>;
+
+    /// Upsert the extra new-card allowance for `deck_id` on `day`.
+    fn set_day_extra_new(&self, deck_id: i64, day: i32, extra_new: u32) -> CoreResult<()>;
+
     /// Render inputs + scheduling state for one card.
     fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>>;
 

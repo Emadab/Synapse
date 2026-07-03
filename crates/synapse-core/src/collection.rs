@@ -82,10 +82,11 @@ impl Collection {
             .deck_by_id(deck_id)?
             .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
         let (new_per_day, rev_per_day) = self.storage.deck_limits(deck.config_id)?;
+        let extra_new = self.storage.day_extra_new(deck_id, self.today())?;
         let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
         let (new_studied, rev_studied) = self.storage.today_studied(deck_id, today_start_ms)?;
         Ok((
-            new_per_day.saturating_sub(new_studied),
+            (new_per_day + extra_new).saturating_sub(new_studied),
             rev_per_day.saturating_sub(rev_studied),
         ))
     }
@@ -100,6 +101,7 @@ impl Collection {
         let all_limits = self.storage.all_deck_limits()?;
         let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
         let studied = self.storage.all_today_studied(today_start_ms)?;
+        let extra_new = self.storage.all_day_extra_new(self.today())?;
         Ok(decks
             .into_iter()
             .map(|d| {
@@ -107,9 +109,10 @@ impl Collection {
                     raw_counts.get(&d.id).copied().unwrap_or((0, 0, 0));
                 let (new_per_day, rev_per_day) =
                     all_limits.get(&d.config_id).copied().unwrap_or((20, 200));
+                let extra = extra_new.get(&d.id).copied().unwrap_or(0);
                 let (new_studied, rev_studied) = studied.get(&d.id).copied().unwrap_or((0, 0));
                 let capped = (
-                    new_raw.min(new_per_day.saturating_sub(new_studied)),
+                    new_raw.min((new_per_day + extra).saturating_sub(new_studied)),
                     learning,
                     review_raw.min(rev_per_day.saturating_sub(rev_studied)),
                 );
@@ -221,6 +224,24 @@ impl Collection {
             .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
         self.storage
             .set_deck_limits(deck.config_id, new_per_day, rev_per_day, self.now_ms())
+    }
+
+    /// Current extra new-card allowance for `deck_id` for today, if any.
+    pub fn get_today_extra_new(&self, deck_id: i64) -> CoreResult<u32> {
+        self.storage.day_extra_new(deck_id, self.today())
+    }
+
+    /// Temporarily raise today's new-card limit for `deck_id` by `extra_new`
+    /// cards. Only applies for today (`Collection::today()`); it lapses on its
+    /// own at the next day rollover since the override is keyed by day number.
+    pub fn increase_today_new_limit(&self, deck_id: i64, extra_new: u32) -> CoreResult<()> {
+        self.storage
+            .deck_by_id(deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        self.storage
+            .set_day_extra_new(deck_id, self.today(), extra_new)?;
+        self.events.emit(DomainEvent::DeckChanged { deck_id });
+        Ok(())
     }
 
     /// Full scheduling config for a deck, for the options dialog (M14).
@@ -1083,6 +1104,15 @@ mod tests {
             _config: &crate::scheduling::SchedConfig,
             _now_ms: i64,
         ) -> CoreResult<()> {
+            Ok(())
+        }
+        fn day_extra_new(&self, _deck_id: i64, _day: i32) -> CoreResult<u32> {
+            Ok(0)
+        }
+        fn all_day_extra_new(&self, _day: i32) -> CoreResult<std::collections::HashMap<i64, u32>> {
+            Ok(std::collections::HashMap::new())
+        }
+        fn set_day_extra_new(&self, _deck_id: i64, _day: i32, _extra_new: u32) -> CoreResult<()> {
             Ok(())
         }
         fn study_card(&self, _card_id: i64) -> CoreResult<Option<StudyCard>> {

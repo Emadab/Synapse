@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { BookOpen, Check, Flag, Layers, MinusCircle, SkipForward, Volume2 } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  Flag,
+  Layers,
+  MinusCircle,
+  PlusCircle,
+  SkipForward,
+  Volume2,
+} from "lucide-react";
 import renderMathInElement from "katex/contrib/auto-render";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -31,23 +40,12 @@ const KATEX_OPTIONS = {
 
 export function StudyScreen() {
   const tauri = isTauri();
-  const [session, setSession] = useState<{ deckId: number; sessionCap: number } | null>(null);
+  const [deckId, setDeckId] = useState<number | null>(null);
 
-  if (session === null) {
-    return (
-      <DeckPicker
-        enabled={tauri}
-        onPick={(deckId, sessionCap) => setSession({ deckId, sessionCap })}
-      />
-    );
+  if (deckId === null) {
+    return <DeckPicker enabled={tauri} onPick={setDeckId} />;
   }
-  return (
-    <Session
-      deckId={session.deckId}
-      sessionCap={session.sessionCap}
-      onExit={() => setSession(null)}
-    />
-  );
+  return <Session deckId={deckId} onExit={() => setDeckId(null)} />;
 }
 
 function CountBadge({ count, color }: { count: number; color: string }) {
@@ -64,10 +62,9 @@ function DeckPicker({
   onPick,
 }: {
   enabled: boolean;
-  onPick: (deckId: number, sessionCap: number) => void;
+  onPick: (deckId: number) => void;
 }) {
   const decks = useQuery({ queryKey: queryKeys.decks, queryFn: ipc.listDecks, enabled });
-  const [sessionCap, setSessionCap] = useState(0);
 
   return (
     <div className="flex h-full flex-col">
@@ -80,72 +77,93 @@ function DeckPicker({
             description="Study runs against the Rust core over Tauri. Launch with `pnpm dev`."
           />
         ) : (
-          <div className="mx-auto flex max-w-md flex-col gap-4">
-            <motion.ul
-              className="flex flex-col gap-2"
-              variants={staggerList}
-              initial="hidden"
-              animate="show"
-            >
-              {(decks.data ?? []).map((deck) => (
-                <motion.li key={deck.id} variants={listItem}>
-                  <button
-                    className="flex w-full items-center gap-3 rounded-lg border border-border px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-accent"
-                    onClick={() => onPick(deck.id, sessionCap)}
-                  >
-                    <Layers className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="flex-1 truncate">{deck.name}</span>
-                    <span className="flex items-center gap-1">
-                      <CountBadge
-                        count={deck.new_count}
-                        color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                      />
-                      <CountBadge
-                        count={deck.learning_count}
-                        color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                      />
-                      <CountBadge
-                        count={deck.review_count}
-                        color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                      />
-                    </span>
-                  </button>
-                </motion.li>
-              ))}
-            </motion.ul>
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-4 py-2.5 text-sm">
-              <span className="text-muted-foreground">Study at most</span>
-              <input
-                type="number"
-                min={0}
-                max={9999}
-                value={sessionCap}
-                onChange={(e) => setSessionCap(Math.max(0, Number(e.target.value)))}
-                className="h-7 w-20 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <span className="text-muted-foreground">cards this session (0 = no limit)</span>
-            </div>
-          </div>
+          <motion.ul
+            className="mx-auto flex max-w-md flex-col gap-2"
+            variants={staggerList}
+            initial="hidden"
+            animate="show"
+          >
+            {(decks.data ?? []).map((deck) => (
+              <motion.li key={deck.id} variants={listItem}>
+                <DeckRow deck={deck} onPick={() => onPick(deck.id)} />
+              </motion.li>
+            ))}
+          </motion.ul>
         )}
       </div>
     </div>
   );
 }
 
-function Session({
-  deckId,
-  sessionCap,
-  onExit,
+function DeckRow({
+  deck,
+  onPick,
 }: {
-  deckId: number;
-  sessionCap: number;
-  onExit: () => void;
+  deck: { id: number; name: string; new_count: number; learning_count: number; review_count: number };
+  onPick: () => void;
 }) {
+  const [extendOpen, setExtendOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border transition-colors hover:bg-accent">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button
+          className="flex flex-1 items-center gap-3 text-left text-sm font-medium"
+          onClick={onPick}
+        >
+          <Layers className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1 truncate">{deck.name}</span>
+        </button>
+        <span className="flex items-center gap-1">
+          <CountBadge
+            count={deck.new_count}
+            color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+          />
+          <CountBadge
+            count={deck.learning_count}
+            color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          />
+          <CountBadge
+            count={deck.review_count}
+            color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+          />
+        </span>
+        <button
+          className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          title="Increase today's new card limit"
+          aria-label="Increase today's new card limit"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExtendOpen((o) => !o);
+          }}
+        >
+          <PlusCircle className="size-4" />
+        </button>
+      </div>
+      <AnimatePresence initial={false}>
+        {extendOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: dur.fast, ease }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border px-4 py-3">
+              <IncreaseLimitControl deckId={deck.id} onDone={() => setExtendOpen(false)} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
   const tauri = isTauri();
   const queryClient = useQueryClient();
   const prefersReduced = useReducedMotion();
   const [revealed, setRevealed] = useState(false);
-  const [answeredCount, setAnsweredCount] = useState(0);
   const [flagMenuOpen, setFlagMenuOpen] = useState(false);
   const flagRef = useRef<HTMLDivElement>(null);
 
@@ -161,7 +179,6 @@ function Session({
     mutationFn: ({ cardId, rating }: { cardId: number; rating: RatingValue }) =>
       ipc.answerCard(cardId, rating),
     onSuccess: (next) => {
-      setAnsweredCount((c) => c + 1);
       queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
       setRevealed(false);
     },
@@ -194,7 +211,6 @@ function Session({
     onSuccess: () => setFlagMenuOpen(false),
   });
 
-  const hitSessionCap = sessionCap > 0 && answeredCount >= sessionCap;
   const card = cardQuery.data ?? null;
   const actionBusy = suspendMut.isPending || buryMut.isPending || flagMut.isPending;
 
@@ -273,7 +289,7 @@ function Session({
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!card || answerMut.isPending || actionBusy || hitSessionCap) return;
+      if (!card || answerMut.isPending || actionBusy) return;
       if (e.key === "r" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         replayAudio();
@@ -301,7 +317,7 @@ function Session({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [card, revealed, answerMut, hitSessionCap, actionBusy, suspendMut, buryMut, replayAudio]);
+  }, [card, revealed, answerMut, actionBusy, suspendMut, buryMut, replayAudio]);
 
   void advanceAfterAction;
 
@@ -339,18 +355,7 @@ function Session({
           </div>
         }
       />
-      {hitSessionCap ? (
-        <EmptyState
-          icon={Check}
-          title="Session complete"
-          description={`You've studied ${answeredCount} cards this session. Come back later to keep going.`}
-          action={
-            <Button variant="outline" onClick={onExit}>
-              Back to decks
-            </Button>
-          }
-        />
-      ) : card ? (
+      {card ? (
         <motion.div
           key={card.card_id}
           initial={{ opacity: 0, y: 8 }}
@@ -515,12 +520,88 @@ function Session({
           title="All done"
           description="No more cards due in this deck right now. Nice work."
           action={
-            <Button variant="outline" onClick={onExit}>
-              Back to decks
-            </Button>
+            <div className="flex flex-col items-center gap-3">
+              <Button variant="outline" onClick={onExit}>
+                Back to decks
+              </Button>
+              <ExtendTodayLimit
+                deckId={deckId}
+                onDone={() =>
+                  void queryClient.refetchQueries({ queryKey: queryKeys.queue(String(deckId)) })
+                }
+              />
+            </div>
           }
         />
       )}
+    </div>
+  );
+}
+
+/** Toggle button + inline form; used at the "all done" screen once a session hits the day's cap. */
+function ExtendTodayLimit({ deckId, onDone }: { deckId: number; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="gap-1.5 text-xs text-muted-foreground"
+        onClick={() => setOpen(true)}
+      >
+        <PlusCircle className="size-3.5" />
+        Increase today's new card limit
+      </Button>
+    );
+  }
+
+  return (
+    <IncreaseLimitControl
+      deckId={deckId}
+      onDone={() => {
+        setOpen(false);
+        onDone();
+      }}
+    />
+  );
+}
+
+/** Inline "study N more new cards today" form. Persists via `ipc.increaseTodayLimit`
+ * and refreshes the deck list badge before calling `onDone`. */
+function IncreaseLimitControl({ deckId, onDone }: { deckId: number; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const [extra, setExtra] = useState(10);
+
+  const increaseMut = useMutation({
+    mutationFn: (extraNew: number) => ipc.increaseTodayLimit(deckId, extraNew),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.decks });
+      onDone();
+    },
+  });
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-secondary/40 px-3 py-2 text-sm">
+      <span className="text-muted-foreground">Study</span>
+      <input
+        type="number"
+        min={1}
+        max={9999}
+        value={extra}
+        onChange={(e) => setExtra(Math.max(1, Number(e.target.value)))}
+        className="h-7 w-16 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        autoFocus
+      />
+      <span className="text-muted-foreground">more new cards today</span>
+      <Button
+        size="sm"
+        className="h-7"
+        disabled={increaseMut.isPending}
+        onClick={() => increaseMut.mutate(extra)}
+      >
+        Add
+      </Button>
     </div>
   );
 }

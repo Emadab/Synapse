@@ -202,6 +202,8 @@ pub fn run() {
             commands::deck::undo_status,
             commands::deck::get_deck_config,
             commands::deck::set_deck_config,
+            commands::deck::get_today_extra_new,
+            commands::deck::increase_today_limit,
             commands::import::import_package,
             commands::study::get_next_card,
             commands::study::answer_card,

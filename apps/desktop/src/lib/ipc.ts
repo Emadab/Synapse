@@ -45,6 +45,11 @@ export const ipc = {
   getDeckConfig: (deckId: number) => invoke<DeckConfig>("get_deck_config", { deckId }),
   setDeckConfig: (config: DeckConfig) => invoke<void>("set_deck_config", { config }),
 
+  // Today's new-card limit override (Anki-style "increase today's limit")
+  getTodayExtraNew: (deckId: number) => invoke<number>("get_today_extra_new", { deckId }),
+  increaseTodayLimit: (deckId: number, extraNew: number) =>
+    invoke<void>("increase_today_limit", { deckId, extraNew }),
+
   // Import
   importPackage: (path: string) => invoke<ImportSummary>("import_package", { path }),
 

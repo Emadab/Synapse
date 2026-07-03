@@ -567,6 +567,18 @@ impl Storage for SqliteStorage {
         study::get_deck_config(&self.lock(), config_id)
     }
 
+    fn day_extra_new(&self, deck_id: i64, day: i32) -> CoreResult<u32> {
+        study::day_extra_new(&self.lock(), deck_id, day)
+    }
+
+    fn all_day_extra_new(&self, day: i32) -> CoreResult<std::collections::HashMap<i64, u32>> {
+        study::all_day_extra_new(&self.lock(), day)
+    }
+
+    fn set_day_extra_new(&self, deck_id: i64, day: i32, extra_new: u32) -> CoreResult<()> {
+        study::set_day_extra_new(&self.lock(), deck_id, day, extra_new)
+    }
+
     fn set_deck_config(&self, config_id: i64, config: &SchedConfig, now_ms: i64) -> CoreResult<()> {
         study::set_deck_config(&self.lock(), config_id, config, now_ms)
     }
@@ -887,7 +899,7 @@ mod tests {
     #[test]
     fn migrations_apply_and_seed_defaults() {
         let s = storage();
-        assert_eq!(s.schema_version().unwrap(), 1);
+        assert_eq!(s.schema_version().unwrap(), 2);
         // The seeded Default deck is present.
         let decks = s.list_decks().unwrap();
         assert_eq!(decks.len(), 1);

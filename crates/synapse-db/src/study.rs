@@ -119,6 +119,45 @@ pub fn set_deck_limits(
     Ok(())
 }
 
+/// Extra new-card allowance for `deck_id` on collection-day `day` (0 if none set).
+pub fn day_extra_new(conn: &Connection, deck_id: i64, day: i32) -> CoreResult<u32> {
+    conn.query_row(
+        "SELECT extra_new FROM day_limit_overrides WHERE deck_id = ?1 AND day = ?2",
+        params![deck_id, day],
+        |r| r.get(0),
+    )
+    .optional()
+    .map_err(err)
+    .map(|v| v.unwrap_or(0))
+}
+
+/// Extra new-card allowances for every deck on collection-day `day`, keyed by deck_id.
+pub fn all_day_extra_new(conn: &Connection, day: i32) -> CoreResult<HashMap<i64, u32>> {
+    let mut stmt = conn
+        .prepare("SELECT deck_id, extra_new FROM day_limit_overrides WHERE day = ?1")
+        .map_err(err)?;
+    let mut map = HashMap::new();
+    let rows = stmt
+        .query_map([day], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?)))
+        .map_err(err)?;
+    for row in rows {
+        let (deck_id, extra_new) = row.map_err(err)?;
+        map.insert(deck_id, extra_new);
+    }
+    Ok(map)
+}
+
+/// Upsert the extra new-card allowance for `deck_id` on `day`.
+pub fn set_day_extra_new(conn: &Connection, deck_id: i64, day: i32, extra_new: u32) -> CoreResult<()> {
+    conn.execute(
+        "INSERT INTO day_limit_overrides (deck_id, day, extra_new) VALUES (?1, ?2, ?3)
+         ON CONFLICT(deck_id, day) DO UPDATE SET extra_new = excluded.extra_new",
+        params![deck_id, day, extra_new],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
 pub fn get_deck_config(conn: &Connection, config_id: i64) -> CoreResult<SchedConfig> {
     let json: String = conn
         .query_row(

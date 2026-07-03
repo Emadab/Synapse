@@ -53,3 +53,18 @@ pub fn set_deck_config(collection: State<'_, Collection>, config: DeckConfig) ->
     collection.set_deck_config(&config)?;
     Ok(())
 }
+
+#[tauri::command]
+pub fn get_today_extra_new(collection: State<'_, Collection>, deck_id: i64) -> IpcResult<u32> {
+    Ok(collection.get_today_extra_new(deck_id)?)
+}
+
+#[tauri::command]
+pub fn increase_today_limit(
+    collection: State<'_, Collection>,
+    deck_id: i64,
+    extra_new: u32,
+) -> IpcResult<()> {
+    collection.increase_today_new_limit(deck_id, extra_new)?;
+    Ok(())
+}
