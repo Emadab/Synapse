@@ -4,20 +4,30 @@ import { BookType, Plus, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { CardFace } from "@/components/CardFace";
 import { ipc, isTauri } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
+import { useTheme } from "@/stores/theme";
 import type { NotetypeDetail, TemplateSummary } from "@synapse/ipc-types";
 
-type Tab = "fields" | "templates";
+type Tab = "fields" | "templates" | "styling";
 
 export function NotetypeScreen() {
   const tauri = isTauri();
   const queryClient = useQueryClient();
+  const night = useTheme((s) => s.resolved === "dark");
 
   const notetypes = useQuery({
     queryKey: queryKeys.notetypes,
     queryFn: () => ipc.listNotetypes(),
     enabled: tauri,
+  });
+
+  const stockNames = useQuery({
+    queryKey: ["stockNotetypes"],
+    queryFn: () => ipc.listStockNotetypes(),
+    enabled: tauri,
+    staleTime: Infinity,
   });
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -71,6 +81,14 @@ export function NotetypeScreen() {
     },
   });
 
+  const addStockNotetype = useMutation({
+    mutationFn: (index: number) => ipc.addStockNotetype(index),
+    onSuccess: (detail) => {
+      invalidate();
+      setSelectedId(detail.id);
+    },
+  });
+
   const deleteNotetype = useMutation({
     mutationFn: (id: number) => ipc.deleteNotetype(id),
     onSuccess: () => {
@@ -83,6 +101,16 @@ export function NotetypeScreen() {
     mutationFn: ({ id, name }: { id: number; name: string }) => ipc.renameNotetype(id, name),
     onSuccess: invalidate,
   });
+
+  const saveCss = useMutation({
+    mutationFn: ({ id, css }: { id: number; css: string }) => ipc.saveNotetypeCss(id, css),
+    onSuccess: invalidate,
+  });
+
+  const [cssDraft, setCssDraft] = useState("");
+  useEffect(() => {
+    setCssDraft(nt?.css ?? "");
+  }, [nt?.id, nt?.css]);
 
   // ── Field mutations ────────────────────────────────────────────────────────
 
@@ -193,15 +221,35 @@ export function NotetypeScreen() {
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Note Types
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6"
-              onClick={() => createNotetype.mutate()}
-              title="Add note type"
-            >
-              <Plus className="size-3.5" />
-            </Button>
+            <div className="relative">
+              <select
+                className="absolute inset-0 size-6 cursor-pointer opacity-0"
+                value=""
+                title="Add note type"
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === "blank") {
+                    createNotetype.mutate();
+                  } else if (value) {
+                    addStockNotetype.mutate(Number(value));
+                  }
+                  e.target.value = "";
+                }}
+              >
+                <option value="" disabled>
+                  Add note type…
+                </option>
+                <option value="blank">Blank note type</option>
+                {(stockNames.data ?? []).map((name, i) => (
+                  <option key={name} value={i}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <Button variant="ghost" size="icon" className="pointer-events-none size-6">
+                <Plus className="size-3.5" />
+              </Button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-auto">
@@ -259,7 +307,7 @@ export function NotetypeScreen() {
 
             {/* Tabs */}
             <div className="flex border-b border-border">
-              {(["fields", "templates"] as Tab[]).map((tab) => (
+              {(["fields", "templates", "styling"] as Tab[]).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -452,20 +500,22 @@ export function NotetypeScreen() {
                           <div className="mb-3 space-y-1">
                             <div className="rounded border border-border bg-card p-3">
                               <div className="mb-1 text-xs text-muted-foreground">Front</div>
-                              <div
-                                className="prose prose-sm dark:prose-invert max-w-none text-sm"
-                                dangerouslySetInnerHTML={{
-                                  __html: preview.data?.question ?? "",
-                                }}
+                              <CardFace
+                                html={preview.data?.question ?? ""}
+                                css={nt.css}
+                                tauri={tauri}
+                                night={night}
+                                className="text-sm"
                               />
                             </div>
                             <div className="rounded border border-border bg-card p-3">
                               <div className="mb-1 text-xs text-muted-foreground">Back</div>
-                              <div
-                                className="prose prose-sm dark:prose-invert max-w-none text-sm"
-                                dangerouslySetInnerHTML={{
-                                  __html: preview.data?.answer ?? "",
-                                }}
+                              <CardFace
+                                html={preview.data?.answer ?? ""}
+                                css={nt.css}
+                                tauri={tauri}
+                                night={night}
+                                className="text-sm"
                               />
                             </div>
                           </div>
@@ -473,6 +523,55 @@ export function NotetypeScreen() {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {activeTab === "styling" && (
+                <div className="flex min-w-0 flex-1 overflow-hidden">
+                  <div className="flex w-1/2 flex-col gap-3 overflow-auto border-r border-border p-4">
+                    <label className="text-xs font-medium text-muted-foreground">Card CSS</label>
+                    <textarea
+                      className="h-full min-h-64 w-full resize-none rounded border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
+                      value={cssDraft}
+                      onChange={(e) => setCssDraft(e.target.value)}
+                      spellCheck={false}
+                    />
+                    <Button
+                      size="sm"
+                      className="w-fit"
+                      onClick={() => saveCss.mutate({ id: nt.id, css: cssDraft })}
+                      disabled={saveCss.isPending}
+                    >
+                      {saveCss.isPending ? "Saving…" : "Save"}
+                    </Button>
+                  </div>
+                  <div className="flex w-1/2 flex-col overflow-auto p-4">
+                    <span className="mb-2 text-xs font-medium text-muted-foreground">
+                      Preview (empty fields)
+                    </span>
+                    <div className="space-y-1">
+                      <div className="rounded border border-border bg-card p-3">
+                        <div className="mb-1 text-xs text-muted-foreground">Front</div>
+                        <CardFace
+                          html={preview.data?.question ?? ""}
+                          css={cssDraft}
+                          tauri={tauri}
+                          night={night}
+                          className="text-sm"
+                        />
+                      </div>
+                      <div className="rounded border border-border bg-card p-3">
+                        <div className="mb-1 text-xs text-muted-foreground">Back</div>
+                        <CardFace
+                          html={preview.data?.answer ?? ""}
+                          css={cssDraft}
+                          tauri={tauri}
+                          night={night}
+                          className="text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

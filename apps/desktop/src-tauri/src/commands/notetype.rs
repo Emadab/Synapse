@@ -40,6 +40,32 @@ pub fn rename_notetype(
 }
 
 #[tauri::command]
+pub fn list_stock_notetypes(collection: State<'_, Collection>) -> IpcResult<Vec<String>> {
+    Ok(collection
+        .stock_notetype_names()
+        .into_iter()
+        .map(str::to_string)
+        .collect())
+}
+
+#[tauri::command]
+pub fn add_stock_notetype(
+    collection: State<'_, Collection>,
+    index: usize,
+) -> IpcResult<NotetypeDetail> {
+    Ok(collection.add_stock_notetype(index)?)
+}
+
+#[tauri::command]
+pub fn save_notetype_css(
+    collection: State<'_, Collection>,
+    notetype_id: i64,
+    css: String,
+) -> IpcResult<()> {
+    Ok(collection.save_notetype_css(notetype_id, &css)?)
+}
+
+#[tauri::command]
 pub fn add_field(
     collection: State<'_, Collection>,
     notetype_id: i64,
@@ -155,6 +181,11 @@ pub fn preview_template(
         fields: &fields,
         card_ord: template_ord as u16,
         is_cloze: detail.kind == 1,
+        notetype: &detail.name,
+        card_name: &tmpl.name,
+        deck: "Preview",
+        subdeck: "Preview",
+        ..RenderRequest::default()
     });
     Ok(RenderedPreview {
         question: rendered.question,

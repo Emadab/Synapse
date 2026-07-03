@@ -148,6 +148,17 @@ pub const MIGRATIONS: &[&str] = &[
     INSERT INTO decks (id, name, parent_id, config_id, "mod", usn)
         VALUES (1, 'Default', NULL, 1, 0, 0);
     "#,
+    // v1 -> v2: per-deck per-day "increase today's new card limit" override.
+    // Keyed by (deck_id, day) where `day` is the collection-relative day number
+    // (Collection::today()), so it naturally stops applying at day rollover.
+    r#"
+    CREATE TABLE day_limit_overrides (
+        deck_id   INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+        day       INTEGER NOT NULL,
+        extra_new INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (deck_id, day)
+    );
+    "#,
 ];
 
 /// Grave record types (matches Anki: card, note, deck).

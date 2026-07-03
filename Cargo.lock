@@ -3522,6 +3522,7 @@ dependencies = [
  "serde",
  "serde_json",
  "synapse-core",
+ "synapse-scheduler",
  "zip",
 ]
 

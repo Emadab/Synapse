@@ -21,6 +21,8 @@ const SECTIONS: { heading: string; rows: [string, string][] }[] = [
       ["Replay audio", "R"],
       ["Suspend card", "S"],
       ["Bury card", "B"],
+      ["Focus mode", "F"],
+      ["Exit focus mode", "Esc"],
     ],
   },
   {
@@ -34,8 +36,7 @@ const SECTIONS: { heading: string; rows: [string, string][] }[] = [
   {
     heading: "Navigation",
     rows: [
-      ["Decks", "G then D"],
-      ["Study", "G then S"],
+      ["Decks & Study", "G then D"],
       ["Browse", "G then B"],
       ["Settings", "G then ,"],
     ],
@@ -70,7 +71,7 @@ export function KeyboardShortcutsDialog({ onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="shortcuts-dialog-title"
-        className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl"
+        className="glass-panel flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border shadow-xl"
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 id="shortcuts-dialog-title" className="text-sm font-semibold">

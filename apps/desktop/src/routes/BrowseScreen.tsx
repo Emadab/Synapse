@@ -408,6 +408,10 @@ export function BrowseScreen() {
                   <th className="w-8 border-b border-border px-2 py-2">
                     <input
                       type="checkbox"
+                      ref={(el) => {
+                        if (el)
+                          el.indeterminate = selArray.length > 0 && selArray.length < sorted.length;
+                      }}
                       checked={selArray.length === sorted.length && sorted.length > 0}
                       onChange={(e) =>
                         setSelected(
@@ -683,6 +687,7 @@ function NoteEditorPanel({ noteId, onSaved }: { noteId: number; onSaved: () => v
           <label className="text-sm font-medium">{field.name}</label>
           <FieldEditor
             value={field.value}
+            otherFieldsHtml={fields.filter((_, i) => i !== index).map((f) => f.value)}
             onChange={(html) =>
               setFields((current) =>
                 current.map((f, i) => (i === index ? { ...f, value: html } : f)),

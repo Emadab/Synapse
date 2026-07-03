@@ -111,48 +111,17 @@ pub fn run() {
         })
         .setup(|app| {
             // Open (or create) the collection under the OS app-data directory.
+            // Kept synchronous: cheap (single file open + migration check) and
+            // every command needs `Collection` state to exist before it can run.
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let db_path = dir.join("collection.sqlite");
             let storage = SqliteStorage::open(&db_path)?;
             let collection = Collection::new(Box::new(storage), Arc::new(SystemClock));
 
-            // Auto-backup on startup: create a zip if no backup in the last 24 h.
-            let backup_dir = dir.join("backups");
-            let _ = std::fs::create_dir_all(&backup_dir);
-            let should_backup = db_backup::list_zips(&backup_dir)
-                .ok()
-                .and_then(|v| v.into_iter().next().map(|(_, ms, _)| ms))
-                .map(|last_ms| {
-                    let now_ms = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as i64;
-                    now_ms - last_ms > 86_400_000
-                })
-                .unwrap_or(true);
-            if should_backup && db_path.is_file() {
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as i64;
-                let tmp = backup_dir.join(format!("{now_ms}.tmp.sqlite"));
-                let zip = backup_dir.join(format!("{now_ms}.zip"));
-                if collection.backup_db(&tmp).is_ok() {
-                    let media_dir = dir.join("collection.media");
-                    if db_backup::create_zip(&tmp, &media_dir, &zip).is_ok() {
-                        let _ = db_backup::rotate_backups(&backup_dir, 20);
-                        tracing::info!("auto-backup created: {now_ms}.zip");
-                    }
-                    let _ = std::fs::remove_file(&tmp);
-                }
-            }
-
-            // Build the initial search index.
+            // Manage an empty index immediately so `SearchState` exists for any
+            // early command; the real index is built in the background below.
             let index = NoteIndex::new().expect("failed to create search index");
-            if let Ok(rows) = collection.index_rows() {
-                let _ = index.rebuild(&rows);
-            }
             app.manage(SearchState(Mutex::new(index)));
 
             // Bridge domain events → webview + rebuild search index on mutations.
@@ -183,12 +152,68 @@ pub fn run() {
 
             app.manage(collection);
 
-            // Plugin manager — auto-install the bundled sample on first run.
-            let plugin_manager = PluginManager::new(&dir);
-            if let Err(e) = plugin_manager.ensure_sample() {
-                tracing::warn!("could not install sample plugin: {e}");
-            }
-            app.manage(Mutex::new(plugin_manager));
+            // Everything below is expensive (zip backup, full-index rebuild,
+            // plugin file IO) and must not block the window from becoming
+            // responsive. Run it on a background thread; the frontend sees the
+            // index populate via the reindex-on-mutation path / `search-ready`.
+            let bg_handle = app.handle().clone();
+            let bg_dir = dir.clone();
+            std::thread::spawn(move || {
+                let app = bg_handle;
+                let dir = bg_dir;
+
+                if let Some(collection) = app.try_state::<Collection>() {
+                    // Auto-backup on startup: create a zip if no backup in the last 24 h.
+                    let backup_dir = dir.join("backups");
+                    let _ = std::fs::create_dir_all(&backup_dir);
+                    let db_path = dir.join("collection.sqlite");
+                    let should_backup = db_backup::list_zips(&backup_dir)
+                        .ok()
+                        .and_then(|v| v.into_iter().next().map(|(_, ms, _)| ms))
+                        .map(|last_ms| {
+                            let now_ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as i64;
+                            now_ms - last_ms > 86_400_000
+                        })
+                        .unwrap_or(true);
+                    if should_backup && db_path.is_file() {
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64;
+                        let tmp = backup_dir.join(format!("{now_ms}.tmp.sqlite"));
+                        let zip = backup_dir.join(format!("{now_ms}.zip"));
+                        if collection.backup_db(&tmp).is_ok() {
+                            let media_dir = dir.join("collection.media");
+                            if db_backup::create_zip(&tmp, &media_dir, &zip).is_ok() {
+                                let _ = db_backup::rotate_backups(&backup_dir, 20);
+                                tracing::info!("auto-backup created: {now_ms}.zip");
+                            }
+                            let _ = std::fs::remove_file(&tmp);
+                        }
+                    }
+
+                    // Build the initial search index.
+                    if let Some(state) = app.try_state::<SearchState>() {
+                        if let Ok(rows) = collection.index_rows() {
+                            if let Ok(idx) = state.0.lock() {
+                                let _ = idx.rebuild(&rows);
+                            }
+                        }
+                    }
+                }
+
+                let _ = app.emit("synapse://search-ready", ());
+
+                // Plugin manager — auto-install the bundled sample on first run.
+                let plugin_manager = PluginManager::new(&dir);
+                if let Err(e) = plugin_manager.ensure_sample() {
+                    tracing::warn!("could not install sample plugin: {e}");
+                }
+                app.manage(Mutex::new(plugin_manager));
+            });
 
             Ok(())
         })
@@ -202,6 +227,11 @@ pub fn run() {
             commands::deck::undo_status,
             commands::deck::get_deck_config,
             commands::deck::set_deck_config,
+            commands::deck::get_today_extra_new,
+            commands::deck::increase_today_limit,
+            commands::deck::get_collection_prefs,
+            commands::deck::set_collection_prefs,
+            commands::deck::set_local_offset,
             commands::import::import_package,
             commands::study::get_next_card,
             commands::study::answer_card,
@@ -222,6 +252,9 @@ pub fn run() {
             commands::notetype::create_notetype,
             commands::notetype::delete_notetype,
             commands::notetype::rename_notetype,
+            commands::notetype::list_stock_notetypes,
+            commands::notetype::add_stock_notetype,
+            commands::notetype::save_notetype_css,
             commands::notetype::add_field,
             commands::notetype::check_field_remove,
             commands::notetype::remove_field,
@@ -251,6 +284,8 @@ pub fn run() {
             commands::maintenance::optimize_db,
             commands::maintenance::check_media,
             commands::maintenance::delete_orphan_media,
+            commands::media::save_media,
+            commands::media::save_media_from_path,
             commands::optimize::optimize_fsrs,
             commands::optimize::apply_fsrs_weights,
             commands::plugins::list_plugins,

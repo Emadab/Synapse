@@ -22,8 +22,49 @@ fn err(e: impl std::fmt::Display) -> CoreError {
     CoreError::Storage(e.to_string())
 }
 
-pub(crate) fn import(tx: &Transaction<'_>, model: &CanonicalModel) -> CoreResult<ImportSummary> {
+/// Insert every field/template belonging to `source_nt_id` in `model` under
+/// `target_id` in the database.
+fn insert_fields_and_templates(
+    tx: &Transaction<'_>,
+    model: &CanonicalModel,
+    source_nt_id: i64,
+    target_id: i64,
+) -> CoreResult<()> {
+    for f in model
+        .fields
+        .iter()
+        .filter(|f| f.notetype_id == source_nt_id)
+    {
+        tx.execute(
+            "INSERT INTO fields (notetype_id, ord, name, config) VALUES (?1, ?2, ?3, ?4)",
+            params![target_id, f.ord, f.name, f.config_json],
+        )
+        .map_err(err)?;
+    }
+    for t in model
+        .templates
+        .iter()
+        .filter(|t| t.notetype_id == source_nt_id)
+    {
+        tx.execute(
+            "INSERT INTO templates (notetype_id, ord, name, qfmt, afmt, config) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![target_id, t.ord, t.name, t.qfmt, t.afmt, t.config_json],
+        )
+        .map_err(err)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn import(
+    tx: &Transaction<'_>,
+    model: &CanonicalModel,
+    on_progress: &mut dyn FnMut(u32, u32),
+) -> CoreResult<ImportSummary> {
     let mut summary = ImportSummary::default();
+    let total_rows = (model.notes.len() + model.cards.len()) as u32;
+    let mut done_rows: u32 = 0;
+    const PROGRESS_STRIDE: u32 = 500;
+    on_progress(0, total_rows);
 
     // 1. Deck options groups.
     for cfg in &model.deck_configs {
@@ -100,6 +141,11 @@ pub(crate) fn import(tx: &Transaction<'_>, model: &CanonicalModel) -> CoreResult
     }
 
     // 3. Note types — get-or-create by name; new ones get their fields/templates.
+    // A same-named notetype that already exists but has zero notes against it
+    // (e.g. an unused stock notetype seeded on collection creation) is treated
+    // as a placeholder and its shape/CSS is replaced by the imported one,
+    // rather than silently keeping the stock templates. Once a notetype has
+    // real notes, re-importing the same deck stays idempotent and reuses it.
     let mut nt_map: HashMap<i64, i64> = HashMap::new();
     for nt in &model.notetypes {
         let existing: Option<i64> = tx
@@ -110,7 +156,34 @@ pub(crate) fn import(tx: &Transaction<'_>, model: &CanonicalModel) -> CoreResult
             )
             .optional()
             .map_err(err)?;
-        let target = match existing {
+        let existing_unused = match existing {
+            Some(id) => {
+                let note_count: i64 = tx
+                    .query_row(
+                        "SELECT COUNT(*) FROM notes WHERE notetype_id = ?1",
+                        [id],
+                        |r| r.get(0),
+                    )
+                    .map_err(err)?;
+                (note_count == 0).then_some(id)
+            }
+            None => None,
+        };
+
+        let target = match existing_unused.or(existing) {
+            Some(id) if existing_unused == Some(id) => {
+                tx.execute(
+                    r#"UPDATE notetypes SET kind = ?2, "mod" = ?3, usn = ?4, config = ?5 WHERE id = ?1"#,
+                    params![id, nt.kind, nt.mod_ms, nt.usn, nt.config_json],
+                )
+                .map_err(err)?;
+                tx.execute("DELETE FROM fields WHERE notetype_id = ?1", [id])
+                    .map_err(err)?;
+                tx.execute("DELETE FROM templates WHERE notetype_id = ?1", [id])
+                    .map_err(err)?;
+                insert_fields_and_templates(tx, model, nt.id, id)?;
+                id
+            }
             Some(id) => id,
             None => {
                 tx.execute(
@@ -120,27 +193,29 @@ pub(crate) fn import(tx: &Transaction<'_>, model: &CanonicalModel) -> CoreResult
                 .map_err(err)?;
                 summary.notetypes_added += 1;
                 let id = tx.last_insert_rowid();
-                for f in model.fields.iter().filter(|f| f.notetype_id == nt.id) {
-                    tx.execute(
-                        "INSERT INTO fields (notetype_id, ord, name, config) VALUES (?1, ?2, ?3, ?4)",
-                        params![id, f.ord, f.name, f.config_json],
-                    )
-                    .map_err(err)?;
-                }
-                for t in model.templates.iter().filter(|t| t.notetype_id == nt.id) {
-                    tx.execute(
-                        "INSERT INTO templates (notetype_id, ord, name, qfmt, afmt, config) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                        params![id, t.ord, t.name, t.qfmt, t.afmt, t.config_json],
-                    )
-                    .map_err(err)?;
-                }
+                insert_fields_and_templates(tx, model, nt.id, id)?;
                 id
             }
         };
         nt_map.insert(nt.id, target);
     }
 
-    // 4. Notes — dedup by guid.
+    // 4. Notes — dedup by guid. Pre-load existing (guid -> (id, mod)) so the
+    // per-row existence check is an in-memory lookup instead of a SELECT.
+    let mut existing_notes: HashMap<String, (i64, i64)> = {
+        let mut stmt = tx
+            .prepare(r#"SELECT id, guid, "mod" FROM notes"#)
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(1)?,
+                    (r.get::<_, i64>(0)?, r.get::<_, i64>(2)?),
+                ))
+            })
+            .map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)?
+    };
     let mut note_map: HashMap<i64, i64> = HashMap::new();
     for note in &model.notes {
         let Some(&notetype_id) = nt_map.get(&note.notetype_id) else {
@@ -157,89 +232,108 @@ pub(crate) fn import(tx: &Transaction<'_>, model: &CanonicalModel) -> CoreResult
             .clone()
             .or_else(|| note.fields.first().cloned());
 
-        let existing: Option<i64> = tx
-            .query_row("SELECT id FROM notes WHERE guid = ?1", [&note.guid], |r| {
-                r.get(0)
-            })
-            .optional()
-            .map_err(err)?;
-        match existing {
-            Some(id) => {
-                tx.execute(
-                    r#"UPDATE notes SET "mod" = ?1, tags = ?2, fields = ?3, sort_field = ?4, checksum = ?5, usn = -1
-                       WHERE id = ?6 AND ?1 >= "mod""#,
-                    params![note.mod_ms, tags, fields, sort, note.checksum, id],
-                )
-                .map_err(err)?;
-                summary.notes_updated += 1;
+        match existing_notes.get(&note.guid).copied() {
+            Some((id, existing_mod)) => {
+                if note.mod_ms >= existing_mod {
+                    tx.prepare_cached(
+                        r#"UPDATE notes SET "mod" = ?1, tags = ?2, fields = ?3, sort_field = ?4, checksum = ?5, usn = -1
+                           WHERE id = ?6"#,
+                    )
+                    .map_err(err)?
+                    .execute(params![note.mod_ms, tags, fields, sort, note.checksum, id])
+                    .map_err(err)?;
+                    summary.notes_updated += 1;
+                    existing_notes.insert(note.guid.clone(), (id, note.mod_ms));
+                }
                 note_map.insert(note.id, id);
             }
             None => {
-                tx.execute(
+                tx.prepare_cached(
                     r#"INSERT INTO notes (guid, notetype_id, "mod", usn, tags, fields, sort_field, checksum)
                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
-                    params![note.guid, notetype_id, note.mod_ms, note.usn, tags, fields, sort, note.checksum],
                 )
+                .map_err(err)?
+                .execute(params![note.guid, notetype_id, note.mod_ms, note.usn, tags, fields, sort, note.checksum])
                 .map_err(err)?;
                 summary.notes_added += 1;
-                note_map.insert(note.id, tx.last_insert_rowid());
+                let id = tx.last_insert_rowid();
+                existing_notes.insert(note.guid.clone(), (id, note.mod_ms));
+                note_map.insert(note.id, id);
             }
+        }
+        done_rows += 1;
+        if done_rows.is_multiple_of(PROGRESS_STRIDE) {
+            on_progress(done_rows, total_rows);
         }
     }
 
-    // 5. Cards — dedup by (note_id, ord).
+    // 5. Cards — dedup by (note_id, ord). Pre-load existing ((note_id, ord) -> id).
+    let mut existing_cards: HashMap<(i64, i64), i64> = {
+        let mut stmt = tx
+            .prepare("SELECT id, note_id, ord FROM cards")
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    (r.get::<_, i64>(1)?, r.get::<_, i64>(2)?),
+                    r.get::<_, i64>(0)?,
+                ))
+            })
+            .map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)?
+    };
     let mut card_map: HashMap<i64, i64> = HashMap::new();
     for card in &model.cards {
         let Some(&note_id) = note_map.get(&card.note_id) else {
             continue;
         };
         let deck_id = deck_map.get(&card.deck_id).copied().unwrap_or(1);
-        let existing: Option<i64> = tx
-            .query_row(
-                "SELECT id FROM cards WHERE note_id = ?1 AND ord = ?2",
-                params![note_id, card.ord],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(err)?;
-        let target = match existing {
+        let key = (note_id, card.ord);
+        let target = match existing_cards.get(&key).copied() {
             Some(id) => id,
             None => {
-                tx.execute(
+                tx.prepare_cached(
                     r#"INSERT INTO cards
                        (note_id, deck_id, ord, "mod", usn, type, queue, due, interval, ease_factor,
                         reps, lapses, remaining, original_due, original_deck_id, flags,
                         fsrs_stability, fsrs_difficulty, fsrs_last_review, data)
                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)"#,
-                    params![
-                        note_id,
-                        deck_id,
-                        card.ord,
-                        card.mod_ms,
-                        card.usn,
-                        card.ctype,
-                        card.queue,
-                        card.due,
-                        card.interval,
-                        card.ease_factor,
-                        card.reps,
-                        card.lapses,
-                        card.remaining,
-                        card.original_due,
-                        card.original_deck_id,
-                        card.flags,
-                        card.fsrs_stability,
-                        card.fsrs_difficulty,
-                        card.fsrs_last_review,
-                        card.data,
-                    ],
                 )
+                .map_err(err)?
+                .execute(params![
+                    note_id,
+                    deck_id,
+                    card.ord,
+                    card.mod_ms,
+                    card.usn,
+                    card.ctype,
+                    card.queue,
+                    card.due,
+                    card.interval,
+                    card.ease_factor,
+                    card.reps,
+                    card.lapses,
+                    card.remaining,
+                    card.original_due,
+                    card.original_deck_id,
+                    card.flags,
+                    card.fsrs_stability,
+                    card.fsrs_difficulty,
+                    card.fsrs_last_review,
+                    card.data,
+                ])
                 .map_err(err)?;
                 summary.cards_added += 1;
-                tx.last_insert_rowid()
+                let id = tx.last_insert_rowid();
+                existing_cards.insert(key, id);
+                id
             }
         };
         card_map.insert(card.id, target);
+        done_rows += 1;
+        if done_rows.is_multiple_of(PROGRESS_STRIDE) {
+            on_progress(done_rows, total_rows);
+        }
     }
 
     // 6. Review history — preserve ids (unique timestamps); dedup via PK.
@@ -248,26 +342,28 @@ pub(crate) fn import(tx: &Transaction<'_>, model: &CanonicalModel) -> CoreResult
             continue;
         };
         let changed = tx
-            .execute(
+            .prepare_cached(
                 r#"INSERT OR IGNORE INTO revlog
                    (id, card_id, usn, ease, interval, last_interval, ease_factor, taken_ms, review_kind)
                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
-                params![
-                    rev.id,
-                    card_id,
-                    rev.usn,
-                    rev.ease,
-                    rev.interval,
-                    rev.last_interval,
-                    rev.ease_factor,
-                    rev.taken_ms,
-                    rev.review_kind
-                ],
             )
+            .map_err(err)?
+            .execute(params![
+                rev.id,
+                card_id,
+                rev.usn,
+                rev.ease,
+                rev.interval,
+                rev.last_interval,
+                rev.ease_factor,
+                rev.taken_ms,
+                rev.review_kind
+            ])
             .map_err(err)?;
         summary.revlog_added += changed as u32;
     }
 
+    on_progress(total_rows, total_rows);
     Ok(summary)
 }
 
@@ -426,5 +522,103 @@ mod tests {
         assert_eq!(second.revlog_added, 0);
         assert_eq!(second.decks_added, 0);
         assert_eq!(second.notes_updated, 1);
+    }
+
+    /// A freshly created collection auto-seeds stock note types (including a
+    /// "Basic" placeholder with no notes yet). Importing a package that also
+    /// defines "Basic" must replace that unused placeholder's fields,
+    /// templates and CSS with the imported ones — not silently keep the
+    /// stock shape, which would make imported decks render with the wrong
+    /// templates.
+    #[test]
+    fn import_overwrites_unused_stock_notetype_of_same_name() {
+        let storage = SqliteStorage::open_in_memory().unwrap();
+        storage.ensure_collection(1_000).unwrap();
+
+        let stock_id: i64 = storage
+            .lock()
+            .query_row("SELECT id FROM notetypes WHERE name = 'Basic'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let stock_afmt: String = storage
+            .lock()
+            .query_row(
+                "SELECT afmt FROM templates WHERE notetype_id = ?1",
+                [stock_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(stock_afmt.contains("hr id"), "stock Basic seeded first");
+
+        let model = sample_model();
+        let summary = storage.import(&model).unwrap();
+        assert_eq!(summary.notes_added, 1);
+
+        let (afmt, css): (String, String) = storage
+            .lock()
+            .query_row(
+                "SELECT t.afmt, coalesce(json_extract(n.config, '$.css'), '')
+                 FROM templates t JOIN notetypes n ON n.id = t.notetype_id
+                 WHERE n.name = 'Basic'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            afmt, "{{FrontSide}}<hr>{{Back}}",
+            "uses the imported template"
+        );
+        assert!(
+            css.is_empty(),
+            "uses the imported (empty) CSS, not the stock default"
+        );
+    }
+
+    /// Two notes sharing a guid within the *same* import batch: the later one
+    /// (by `mod_ms`) should update the row created by the earlier one, not be
+    /// treated as a separate insert. This pins down the semantics of the
+    /// bulk-preload existence check, which (unlike a per-row `SELECT`) must be
+    /// kept up to date as rows are inserted within the loop.
+    #[test]
+    fn duplicate_guid_within_one_batch_updates_in_place() {
+        let storage = SqliteStorage::open_in_memory().unwrap();
+        let mut model = sample_model();
+        model.notes = vec![
+            Note {
+                id: 100,
+                guid: "dup".into(),
+                notetype_id: 10,
+                mod_ms: 1,
+                usn: -1,
+                tags: vec![],
+                fields: vec!["first".into(), "one".into()],
+                sort_field: Some("first".into()),
+                checksum: Some(1),
+            },
+            Note {
+                id: 101,
+                guid: "dup".into(),
+                notetype_id: 10,
+                mod_ms: 2,
+                usn: -1,
+                tags: vec![],
+                fields: vec!["second".into(), "two".into()],
+                sort_field: Some("second".into()),
+                checksum: Some(2),
+            },
+        ];
+        model.cards = vec![];
+        model.revlog = vec![];
+
+        let summary = storage.import(&model).unwrap();
+        assert_eq!(
+            summary.notes_added, 1,
+            "second note updates the first's row"
+        );
+        assert_eq!(summary.notes_updated, 1);
+
+        let note = storage.note_detail(1).unwrap().unwrap();
+        assert_eq!(note.fields[0].value, "second", "later mod_ms wins");
     }
 }

@@ -5,6 +5,7 @@ import type {
   AppInfo,
   BackupInfo,
   CardRow,
+  CollectionPrefs,
   FsrsOptimizeResult,
   DeckConfig,
   DeckSummary,
@@ -44,14 +45,27 @@ export const ipc = {
   // Full deck config (M14)
   getDeckConfig: (deckId: number) => invoke<DeckConfig>("get_deck_config", { deckId }),
   setDeckConfig: (config: DeckConfig) => invoke<void>("set_deck_config", { config }),
+  getCollectionPrefs: () => invoke<CollectionPrefs>("get_collection_prefs"),
+  setCollectionPrefs: (prefs: CollectionPrefs) => invoke<void>("set_collection_prefs", { prefs }),
+  setLocalOffset: (minutes: number) => invoke<void>("set_local_offset", { minutes }),
+
+  // Today's new-card limit override (Anki-style "increase today's limit")
+  getTodayExtraNew: (deckId: number) => invoke<number>("get_today_extra_new", { deckId }),
+  increaseTodayLimit: (deckId: number, extraNew: number) =>
+    invoke<void>("increase_today_limit", { deckId, extraNew }),
 
   // Import
   importPackage: (path: string) => invoke<ImportSummary>("import_package", { path }),
 
+  // Media (editor image/audio insert)
+  saveMedia: (bytes: Uint8Array, filename: string) =>
+    invoke<string>("save_media", { bytes: Array.from(bytes), filename }),
+  saveMediaFromPath: (sourcePath: string) => invoke<string>("save_media_from_path", { sourcePath }),
+
   // Study
   getNextCard: (deckId: number) => invoke<StudyCardDto | null>("get_next_card", { deckId }),
-  answerCard: (cardId: number, rating: RatingValue) =>
-    invoke<StudyCardDto | null>("answer_card", { cardId, rating }),
+  answerCard: (cardId: number, rating: RatingValue, deckId: number) =>
+    invoke<StudyCardDto | null>("answer_card", { cardId, rating, deckId }),
 
   // Note types (summary list — used by Add Note picker)
   listNotetypes: () => invoke<NotetypeSummary[]>("list_notetypes"),
@@ -65,6 +79,8 @@ export const ipc = {
     invoke<NotetypeDetail | null>("get_notetype", { notetypeId }),
   createNotetype: (name: string, kind: number) =>
     invoke<NotetypeDetail>("create_notetype", { name, kind }),
+  listStockNotetypes: () => invoke<string[]>("list_stock_notetypes"),
+  addStockNotetype: (index: number) => invoke<NotetypeDetail>("add_stock_notetype", { index }),
   deleteNotetype: (notetypeId: number) => invoke<void>("delete_notetype", { notetypeId }),
   renameNotetype: (notetypeId: number, name: string) =>
     invoke<void>("rename_notetype", { notetypeId, name }),
@@ -83,6 +99,8 @@ export const ipc = {
     invoke<void>("remove_template", { notetypeId, ord }),
   saveTemplate: (notetypeId: number, ord: number, name: string, qfmt: string, afmt: string) =>
     invoke<void>("save_template", { notetypeId, ord, name, qfmt, afmt }),
+  saveNotetypeCss: (notetypeId: number, css: string) =>
+    invoke<void>("save_notetype_css", { notetypeId, css }),
   previewTemplate: (notetypeId: number, templateOrd: number, sampleFields: string[]) =>
     invoke<RenderedPreview>("preview_template", { notetypeId, templateOrd, sampleFields }),
 
@@ -131,7 +149,12 @@ export const ipc = {
   exportPackage: (path: string) => invoke<number>("export_package", { path }),
 
   // Statistics
-  getStats: () => invoke<StatsDto>("get_stats"),
+  getStats: (deckId: number | null, days: number | null) =>
+    invoke<StatsDto>("get_stats", {
+      deckId,
+      days,
+      tzOffsetMinutes: -new Date().getTimezoneOffset(),
+    }),
 
   // FSRS optimizer (M20)
   optimizeFsrs: (deckId: number | null) => invoke<FsrsOptimizeResult>("optimize_fsrs", { deckId }),

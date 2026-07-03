@@ -157,6 +157,15 @@ feature slices (`features/*`) → thin route shells (`routes`). Tokens in
 `packages/ui-tokens`; Framer Motion (interruptible, never blocks input);
 accessibility via Radix; respects `prefers-reduced-motion`.
 
+Chrome is two layers: the 36px `TitleBar` (window drag + controls, sidebar
+dock button, ⌘K trigger) and a slim sticky per-route `ScreenHeader` (title +
+inline `description`, single `h-12` row — hidden below `md`, so keep
+descriptions compact). Translucent chrome and floating panels (palette,
+dialogs, popovers, study HUD) use the `.glass-chrome` / `.glass-panel`
+utilities in `globals.css`. Ephemeral UI state — study focus mode, the
+command-palette open signal, and home-screen layout choice — lives in
+`stores/ui.ts` (zustand), separate from `stores/theme.ts`.
+
 ## 10. Routing
 
 TanStack Router (type-safe, pairs with TanStack Query, typed search params for

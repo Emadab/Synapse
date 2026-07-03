@@ -119,6 +119,50 @@ pub fn set_deck_limits(
     Ok(())
 }
 
+/// Extra new-card allowance for `deck_id` on collection-day `day` (0 if none set).
+pub fn day_extra_new(conn: &Connection, deck_id: i64, day: i32) -> CoreResult<u32> {
+    conn.query_row(
+        "SELECT extra_new FROM day_limit_overrides WHERE deck_id = ?1 AND day = ?2",
+        params![deck_id, day],
+        |r| r.get(0),
+    )
+    .optional()
+    .map_err(err)
+    .map(|v| v.unwrap_or(0))
+}
+
+/// Extra new-card allowances for every deck on collection-day `day`, keyed by deck_id.
+pub fn all_day_extra_new(conn: &Connection, day: i32) -> CoreResult<HashMap<i64, u32>> {
+    let mut stmt = conn
+        .prepare("SELECT deck_id, extra_new FROM day_limit_overrides WHERE day = ?1")
+        .map_err(err)?;
+    let mut map = HashMap::new();
+    let rows = stmt
+        .query_map([day], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, u32>(1)?)))
+        .map_err(err)?;
+    for row in rows {
+        let (deck_id, extra_new) = row.map_err(err)?;
+        map.insert(deck_id, extra_new);
+    }
+    Ok(map)
+}
+
+/// Upsert the extra new-card allowance for `deck_id` on `day`.
+pub fn set_day_extra_new(
+    conn: &Connection,
+    deck_id: i64,
+    day: i32,
+    extra_new: u32,
+) -> CoreResult<()> {
+    conn.execute(
+        "INSERT INTO day_limit_overrides (deck_id, day, extra_new) VALUES (?1, ?2, ?3)
+         ON CONFLICT(deck_id, day) DO UPDATE SET extra_new = excluded.extra_new",
+        params![deck_id, day, extra_new],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
 pub fn get_deck_config(conn: &Connection, config_id: i64) -> CoreResult<SchedConfig> {
     let json: String = conn
         .query_row(
@@ -266,6 +310,41 @@ pub fn ensure_collection(conn: &Connection, now_ms: i64) -> CoreResult<i64> {
         r.get(0)
     })
     .map_err(err)
+}
+
+const DEFAULT_ROLLOVER_HOUR: u8 = 4;
+
+pub fn get_rollover_hour(conn: &Connection) -> CoreResult<u8> {
+    let json: String = conn
+        .query_row("SELECT config FROM collection WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+        .optional()
+        .map_err(err)?
+        .unwrap_or_else(|| "{}".to_string());
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+    Ok(v["rolloverHour"]
+        .as_u64()
+        .map(|h| h.min(23) as u8)
+        .unwrap_or(DEFAULT_ROLLOVER_HOUR))
+}
+
+pub fn set_rollover_hour(conn: &Connection, hour: u8, now_ms: i64) -> CoreResult<()> {
+    let json: String = conn
+        .query_row("SELECT config FROM collection WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+        .optional()
+        .map_err(err)?
+        .unwrap_or_else(|| "{}".to_string());
+    let mut v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+    v["rolloverHour"] = serde_json::Value::Number(hour.min(23).into());
+    conn.execute(
+        "UPDATE collection SET config = ?1, modified = ?2 WHERE id = 1",
+        params![v.to_string(), now_ms],
+    )
+    .map_err(err)?;
+    Ok(())
 }
 
 /// New-card order jitter. New cards carry their import position in `due` — for a
@@ -455,13 +534,38 @@ pub fn deck_due_counts(
     Ok(map)
 }
 
+/// `due` for a set of card ids, keyed by id. Used to merge multiple decks'
+/// learning streams into one soonest-first order (see subdeck rollup in
+/// `Collection::next_card_id`).
+pub fn cards_due_ms(conn: &Connection, card_ids: &[i64]) -> CoreResult<HashMap<i64, i64>> {
+    if card_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let json = serde_json::to_string(card_ids).map_err(err)?;
+    let mut stmt = conn
+        .prepare("SELECT id, due FROM cards WHERE id IN (SELECT value FROM json_each(?1))")
+        .map_err(err)?;
+    let mut map = HashMap::new();
+    let rows = stmt
+        .query_map([json], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+        .map_err(err)?;
+    for row in rows {
+        let (id, due) = row.map_err(err)?;
+        map.insert(id, due);
+    }
+    Ok(map)
+}
+
 pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCard>> {
     let row = conn
         .query_row(
             "SELECT c.note_id, c.deck_id, c.ord, c.type, c.interval, c.ease_factor, c.reps,
                     c.lapses, c.remaining, c.fsrs_stability, c.fsrs_difficulty,
-                    c.fsrs_last_review, n.fields, n.notetype_id
-             FROM cards c JOIN notes n ON n.id = c.note_id
+                    c.fsrs_last_review, n.fields, n.notetype_id, n.tags, c.flags,
+                    d.name
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             JOIN decks d ON d.id = c.deck_id
              WHERE c.id = ?1",
             [card_id],
             |r| {
@@ -481,6 +585,9 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
                         last_review: r.get(11)?,
                         fields: r.get(12)?,
                         notetype_id: r.get(13)?,
+                        tags: r.get(14)?,
+                        flags: r.get(15)?,
+                        deck_name: r.get(16)?,
                     },
                 ))
             },
@@ -509,34 +616,54 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
     // have a single template shared by every cloze card).
     let template = conn
         .query_row(
-            "SELECT qfmt, afmt FROM templates WHERE notetype_id = ?1 AND ord = ?2",
+            "SELECT qfmt, afmt, name FROM templates WHERE notetype_id = ?1 AND ord = ?2",
             params![row.notetype_id, row.ord],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
         )
         .optional()
         .map_err(err)?;
-    let (qfmt, afmt) = match template {
+    let (qfmt, afmt, template_name) = match template {
         Some(t) => t,
         None => conn
             .query_row(
-                "SELECT qfmt, afmt FROM templates WHERE notetype_id = ?1 AND ord = 0",
+                "SELECT qfmt, afmt, name FROM templates WHERE notetype_id = ?1 AND ord = 0",
                 [row.notetype_id],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
+                },
             )
             .optional()
             .map_err(err)?
             .unwrap_or_default(),
     };
 
-    let is_cloze: i64 = conn
+    let (is_cloze, notetype_name, css, occlusion_mode): (i64, String, String, String) = conn
         .query_row(
-            "SELECT kind FROM notetypes WHERE id = ?1",
+            "SELECT kind, name, coalesce(json_extract(config, '$.css'), ''),
+                    coalesce(json_extract(config, '$.occlusionMode'), '')
+             FROM notetypes WHERE id = ?1",
             [row.notetype_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .optional()
         .map_err(err)?
-        .unwrap_or(0);
+        .unwrap_or((0, String::new(), String::new(), String::new()));
+
+    let tags = row.tags.split_whitespace().collect::<Vec<_>>().join(" ");
+    let (deck, subdeck) = match row.deck_name.rsplit_once("::") {
+        Some((_, leaf)) => (row.deck_name.clone(), leaf.to_string()),
+        None => (row.deck_name.clone(), row.deck_name.clone()),
+    };
 
     Ok(Some(StudyCard {
         id: card_id,
@@ -548,6 +675,14 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
             afmt,
             is_cloze: is_cloze == 1,
             card_ord: row.ord.max(0) as u16,
+            tags,
+            deck,
+            subdeck,
+            notetype: notetype_name,
+            card_name: template_name,
+            flag: row.flags.clamp(0, 7) as u8,
+            css,
+            occlusion_mode,
         },
         state: CardState {
             phase: type_to_phase(row.card_type),
@@ -632,6 +767,9 @@ struct CardRow {
     last_review: Option<i64>,
     fields: String,
     notetype_id: i64,
+    tags: String,
+    flags: i64,
+    deck_name: String,
 }
 
 #[cfg(test)]
@@ -750,6 +888,14 @@ mod tests {
                 afmt: "{{Back}}".into(),
                 is_cloze: false,
                 card_ord: 0,
+                tags: "".into(),
+                deck: "Default".into(),
+                subdeck: "Default".into(),
+                notetype: "Basic".into(),
+                card_name: "Card 1".into(),
+                flag: 0,
+                css: "".into(),
+                occlusion_mode: "".into(),
             }
         );
 

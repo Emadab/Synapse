@@ -1,15 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { BookOpen, Check, Flag, Layers, MinusCircle, SkipForward, Volume2 } from "lucide-react";
-import renderMathInElement from "katex/contrib/auto-render";
+import {
+  Check,
+  Flag,
+  Maximize2,
+  Minimize2,
+  MinusCircle,
+  Settings,
+  SkipForward,
+  Volume2,
+} from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { CardFace } from "@/components/CardFace";
+import { DeckOptionsDialog } from "@/components/DeckOptionsDialog";
+import { DeckCounts } from "@/components/decks/DeckCounts";
+import { ExtendTodayLimit } from "@/components/decks/IncreaseLimitControl";
+import { Kbd } from "@/components/Kbd";
 import { ipc, isTauri, Rating, type RatingValue } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
-import { mediaUrl, prepareCard } from "@/lib/renderCard";
+import { mediaUrl, type QueueEntry } from "@/lib/renderCard";
 import { dur, ease, listItem, staggerList, useReducedMotion } from "@/lib/motion";
+import { useTheme } from "@/stores/theme";
+import { useUi } from "@/stores/ui";
+import { speak, cancelSpeech } from "@/lib/tts";
 
 const FLAG_COLORS: Record<number, string> = {
   0: "text-muted-foreground",
@@ -19,135 +36,31 @@ const FLAG_COLORS: Record<number, string> = {
   4: "text-blue-500",
 };
 
-const KATEX_OPTIONS = {
-  delimiters: [
-    { left: "\\(", right: "\\)", display: false },
-    { left: "\\[", right: "\\]", display: true },
-    { left: "$$", right: "$$", display: true },
-    { left: "$", right: "$", display: false },
-  ],
-  throwOnError: false,
-} as const;
-
-export function StudyScreen() {
-  const tauri = isTauri();
-  const [session, setSession] = useState<{ deckId: number; sessionCap: number } | null>(null);
-
-  if (session === null) {
-    return (
-      <DeckPicker
-        enabled={tauri}
-        onPick={(deckId, sessionCap) => setSession({ deckId, sessionCap })}
-      />
-    );
-  }
-  return (
-    <Session
-      deckId={session.deckId}
-      sessionCap={session.sessionCap}
-      onExit={() => setSession(null)}
-    />
-  );
+export function StudySessionScreen() {
+  const { deckId } = useParams({ from: "/study/$deckId" });
+  const navigate = useNavigate();
+  return <Session deckId={deckId} onExit={() => void navigate({ to: "/" })} />;
 }
 
-function CountBadge({ count, color }: { count: number; color: string }) {
-  if (count === 0) return null;
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${color}`}>
-      {count}
-    </span>
-  );
-}
-
-function DeckPicker({
-  enabled,
-  onPick,
-}: {
-  enabled: boolean;
-  onPick: (deckId: number, sessionCap: number) => void;
-}) {
-  const decks = useQuery({ queryKey: queryKeys.decks, queryFn: ipc.listDecks, enabled });
-  const [sessionCap, setSessionCap] = useState(0);
-
-  return (
-    <div className="flex h-full flex-col">
-      <ScreenHeader title="Study" description="Pick a deck to review." />
-      <div className="flex-1 overflow-auto p-8">
-        {!enabled ? (
-          <EmptyState
-            icon={BookOpen}
-            title="Run the desktop app"
-            description="Study runs against the Rust core over Tauri. Launch with `pnpm dev`."
-          />
-        ) : (
-          <div className="mx-auto flex max-w-md flex-col gap-4">
-            <motion.ul
-              className="flex flex-col gap-2"
-              variants={staggerList}
-              initial="hidden"
-              animate="show"
-            >
-              {(decks.data ?? []).map((deck) => (
-                <motion.li key={deck.id} variants={listItem}>
-                  <button
-                    className="flex w-full items-center gap-3 rounded-lg border border-border px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-accent"
-                    onClick={() => onPick(deck.id, sessionCap)}
-                  >
-                    <Layers className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="flex-1 truncate">{deck.name}</span>
-                    <span className="flex items-center gap-1">
-                      <CountBadge
-                        count={deck.new_count}
-                        color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                      />
-                      <CountBadge
-                        count={deck.learning_count}
-                        color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-                      />
-                      <CountBadge
-                        count={deck.review_count}
-                        color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                      />
-                    </span>
-                  </button>
-                </motion.li>
-              ))}
-            </motion.ul>
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-4 py-2.5 text-sm">
-              <span className="text-muted-foreground">Study at most</span>
-              <input
-                type="number"
-                min={0}
-                max={9999}
-                value={sessionCap}
-                onChange={(e) => setSessionCap(Math.max(0, Number(e.target.value)))}
-                className="h-7 w-20 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <span className="text-muted-foreground">cards this session (0 = no limit)</span>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Session({
-  deckId,
-  sessionCap,
-  onExit,
-}: {
-  deckId: number;
-  sessionCap: number;
-  onExit: () => void;
-}) {
+function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
   const tauri = isTauri();
   const queryClient = useQueryClient();
   const prefersReduced = useReducedMotion();
   const [revealed, setRevealed] = useState(false);
-  const [answeredCount, setAnsweredCount] = useState(0);
   const [flagMenuOpen, setFlagMenuOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [sessionAnswered, setSessionAnswered] = useState(0);
   const flagRef = useRef<HTMLDivElement>(null);
+  const focusMode = useUi((s) => s.focusMode);
+  const toggleFocusMode = useUi((s) => s.toggleFocusMode);
+  const setFocusMode = useUi((s) => s.setFocusMode);
+
+  const deckName = useQuery({
+    queryKey: queryKeys.decks,
+    queryFn: ipc.listDecks,
+    enabled: tauri,
+    select: (decks) => decks.find((d) => d.id === deckId)?.name,
+  }).data;
 
   const cardQuery = useQuery({
     queryKey: queryKeys.queue(String(deckId)),
@@ -159,18 +72,13 @@ function Session({
 
   const answerMut = useMutation({
     mutationFn: ({ cardId, rating }: { cardId: number; rating: RatingValue }) =>
-      ipc.answerCard(cardId, rating),
+      ipc.answerCard(cardId, rating, deckId),
     onSuccess: (next) => {
-      setAnsweredCount((c) => c + 1);
       queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
       setRevealed(false);
+      setSessionAnswered((n) => n + 1);
     },
   });
-
-  const advanceAfterAction = (next: typeof cardQuery.data | null) => {
-    queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
-    setRevealed(false);
-  };
 
   const suspendMut = useMutation({
     mutationFn: (cardId: number) => ipc.suspendCards([cardId]),
@@ -194,70 +102,62 @@ function Session({
     onSuccess: () => setFlagMenuOpen(false),
   });
 
-  const hitSessionCap = sessionCap > 0 && answeredCount >= sessionCap;
   const card = cardQuery.data ?? null;
   const actionBusy = suspendMut.isPending || buryMut.isPending || flagMut.isPending;
 
-  const prepared = useMemo(
-    () =>
-      card
-        ? {
-            q: prepareCard(card.question, tauri),
-            a: prepareCard(card.answer, tauri),
-          }
-        : null,
-    [card, tauri],
-  );
+  const night = useTheme((s) => s.resolved === "dark");
+  const [frontQueue, setFrontQueue] = useState<QueueEntry[]>([]);
+  const [backQueue, setBackQueue] = useState<QueueEntry[]>([]);
+  const [typedAnswer, setTypedAnswer] = useState("");
+  const currentQueue = revealed ? backQueue : frontQueue;
 
-  const currentSounds = useMemo(
-    () => (prepared ? (revealed ? prepared.a.sounds : prepared.q.sounds) : []),
-    [prepared, revealed],
-  );
-
-  // Audio sequencer
-  const [soundIdx, setSoundIdx] = useState(-1);
+  // Sound + TTS sequencer — plays [sound:...] files and {{tts:}} utterances
+  // in the document order the render engine's unified queue reports.
+  const [queueIdx, setQueueIdx] = useState(-1);
   const cardKey = card?.card_id ?? -1;
 
   useEffect(() => {
-    setSoundIdx(currentSounds.length > 0 ? 0 : -1);
+    setTypedAnswer("");
+  }, [cardKey]);
+
+  useEffect(() => {
+    setQueueIdx(currentQueue.length > 0 ? 0 : -1);
   }, [cardKey, revealed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replayAudio = useCallback(() => {
-    if (currentSounds.length > 0) setSoundIdx(0);
-  }, [currentSounds.length]);
+    if (currentQueue.length > 0) setQueueIdx(0);
+  }, [currentQueue.length]);
 
   useEffect(() => {
-    if (!tauri || soundIdx < 0 || soundIdx >= currentSounds.length) return;
-    const audio = new Audio(mediaUrl(currentSounds[soundIdx]));
-    audio.play().catch(() => {});
-    audio.onended = () => setSoundIdx((i) => i + 1);
-    return () => {
-      audio.pause();
-      audio.src = "";
-    };
-  }, [tauri, soundIdx, currentSounds]);
+    if (queueIdx < 0 || queueIdx >= currentQueue.length) return;
+    const entry = currentQueue[queueIdx];
+    const advance = () => setQueueIdx((i) => i + 1);
 
-  // KaTeX: run on both flip faces when the card changes.
-  const cardFrontRef = useRef<HTMLDivElement>(null);
-  const cardBackRef = useRef<HTMLDivElement>(null);
-  // Fallback ref for reduced-motion path.
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (prefersReduced) {
-      if (cardRef.current) renderMathInElement(cardRef.current, KATEX_OPTIONS);
-    } else {
-      if (cardFrontRef.current) renderMathInElement(cardFrontRef.current, KATEX_OPTIONS);
-      if (cardBackRef.current) renderMathInElement(cardBackRef.current, KATEX_OPTIONS);
+    if (entry.kind === "file") {
+      if (!tauri) {
+        advance();
+        return;
+      }
+      const audio = new Audio(mediaUrl(entry.name));
+      audio.play().catch(() => {});
+      audio.onended = advance;
+      return () => {
+        audio.pause();
+        audio.src = "";
+      };
     }
-  }, [card?.card_id, prefersReduced]);
 
-  // Also re-run KaTeX on reduced-motion path when revealed (html changes).
-  const currentHtml = prepared ? (revealed ? prepared.a.html : prepared.q.html) : "";
-  useEffect(() => {
-    if (!prefersReduced || !cardRef.current) return;
-    renderMathInElement(cardRef.current, KATEX_OPTIONS);
-  }, [currentHtml, prefersReduced]);
+    let cancelled = false;
+    void speak(entry.text, { lang: entry.lang, voices: entry.voices, rate: entry.rate }).then(
+      () => {
+        if (!cancelled) advance();
+      },
+    );
+    return () => {
+      cancelled = true;
+      cancelSpeech();
+    };
+  }, [tauri, queueIdx, currentQueue]);
 
   // Close flag menu on outside click.
   useEffect(() => {
@@ -273,7 +173,26 @@ function Session({
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!card || answerMut.isPending || actionBusy || hitSessionCap) return;
+      const typing =
+        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+
+      // Esc exits focus mode regardless of typing state; otherwise ignore
+      // shortcuts while the user is typing (e.g. into the type-answer field).
+      if (e.key === "Escape") {
+        if (focusMode) {
+          e.preventDefault();
+          setFocusMode(false);
+        }
+        return;
+      }
+      if (typing) return;
+
+      if (e.key === "f" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+      }
+      if (!card || answerMut.isPending || actionBusy) return;
       if (e.key === "r" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         replayAudio();
@@ -301,70 +220,113 @@ function Session({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [card, revealed, answerMut, hitSessionCap, actionBusy, suspendMut, buryMut, replayAudio]);
-
-  void advanceAfterAction;
+  }, [
+    card,
+    revealed,
+    answerMut,
+    actionBusy,
+    suspendMut,
+    buryMut,
+    replayAudio,
+    focusMode,
+    setFocusMode,
+    toggleFocusMode,
+  ]);
 
   const flipDuration = prefersReduced ? 0 : dur.slow;
   const fadeDuration = prefersReduced ? 0 : dur.base;
 
+  const sessionTotal = card
+    ? sessionAnswered + card.new_count + card.learning_count + card.review_count
+    : sessionAnswered;
+  const progressFraction = sessionTotal > 0 ? sessionAnswered / sessionTotal : 0;
+
   return (
-    <div className="flex h-full flex-col">
-      <ScreenHeader
-        title="Studying"
-        actions={
+    <div className="relative flex h-full flex-col">
+      {focusMode ? (
+        <div className="glass-panel relative z-20 flex h-9 shrink-0 items-center justify-between gap-3 border-b px-4">
+          <div
+            className="absolute inset-x-0 bottom-0 h-px bg-primary/60 transition-[width] duration-300"
+            style={{ width: `${Math.round(progressFraction * 100)}%` }}
+          />
+          <span className="truncate text-[13px] text-muted-foreground">{deckName}</span>
           <div className="flex items-center gap-3">
             {card && (
-              <span className="flex items-center gap-1.5 tabular-nums">
-                {card.new_count > 0 && (
-                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                    {card.new_count}
-                  </span>
-                )}
-                {card.learning_count > 0 && (
-                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                    {card.learning_count}
-                  </span>
-                )}
-                {card.review_count > 0 && (
-                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
-                    {card.review_count}
-                  </span>
-                )}
-              </span>
+              <DeckCounts
+                newCount={card.new_count}
+                learningCount={card.learning_count}
+                reviewCount={card.review_count}
+              />
             )}
-            <Button variant="ghost" size="sm" onClick={onExit}>
-              Back to decks
-            </Button>
+            <button
+              type="button"
+              onClick={() => setFocusMode(false)}
+              title="Exit focus (Esc)"
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Minimize2 className="size-3.5" />
+            </button>
           </div>
-        }
-      />
-      {hitSessionCap ? (
-        <EmptyState
-          icon={Check}
-          title="Session complete"
-          description={`You've studied ${answeredCount} cards this session. Come back later to keep going.`}
-          action={
-            <Button variant="outline" onClick={onExit}>
-              Back to decks
-            </Button>
+        </div>
+      ) : (
+        <ScreenHeader
+          title={deckName ?? "Studying"}
+          actions={
+            <div className="flex items-center gap-3">
+              {card && (
+                <DeckCounts
+                  newCount={card.new_count}
+                  learningCount={card.learning_count}
+                  reviewCount={card.review_count}
+                />
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setFocusMode(true)}
+                title="Focus mode (F)"
+              >
+                <Maximize2 className="size-3.5" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onExit}>
+                Back to decks
+              </Button>
+            </div>
           }
         />
-      ) : card ? (
+      )}
+
+      {focusMode && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0"
+          style={{
+            background:
+              "radial-gradient(ellipse at center, transparent 45%, hsl(var(--background)) 100%)",
+          }}
+        />
+      )}
+
+      {card ? (
         <motion.div
           key={card.card_id}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: fadeDuration, ease }}
-          className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-8"
+          className={`relative z-10 mx-auto flex w-full flex-1 flex-col px-6 py-8 ${focusMode ? "max-w-3xl" : "max-w-2xl"}`}
         >
           {/* Card — 3D flip (or plain div for reduced-motion) */}
           {prefersReduced ? (
-            <div
-              ref={cardRef}
-              key={card.card_id + (revealed ? "a" : "q")}
-              className="synapse-card flex-1 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto"
-              dangerouslySetInnerHTML={{ __html: currentHtml }}
+            <CardFace
+              key={card.card_id}
+              html={revealed ? card.answer : card.question}
+              css={card.css}
+              tauri={tauri}
+              night={night}
+              className="synapse-card flex-1 rounded-xl border border-border bg-card p-8 overflow-auto"
+              onQueue={revealed ? setBackQueue : setFrontQueue}
+              onTypedInput={!revealed ? setTypedAnswer : undefined}
+              typedAnswer={revealed ? typedAnswer : undefined}
             />
           ) : (
             <div className="synapse-flip relative flex-1">
@@ -375,18 +337,26 @@ function Session({
                 transition={{ duration: flipDuration, ease }}
               >
                 {/* Front — question */}
-                <div
-                  ref={cardFrontRef}
-                  className="synapse-card absolute inset-0 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto"
+                <CardFace
+                  html={card.question}
+                  css={card.css}
+                  tauri={tauri}
+                  night={night}
+                  className="synapse-card absolute inset-0 rounded-xl border border-border bg-card p-8 overflow-auto"
                   style={{ backfaceVisibility: "hidden" }}
-                  dangerouslySetInnerHTML={{ __html: prepared?.q.html ?? "" }}
+                  onQueue={setFrontQueue}
+                  onTypedInput={setTypedAnswer}
                 />
                 {/* Back — answer (pre-rotated so it faces forward when parent is at 180°) */}
-                <div
-                  ref={cardBackRef}
-                  className="synapse-card absolute inset-0 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto"
+                <CardFace
+                  html={card.answer}
+                  css={card.css}
+                  tauri={tauri}
+                  night={night}
+                  className="synapse-card absolute inset-0 rounded-xl border border-border bg-card p-8 overflow-auto"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
-                  dangerouslySetInnerHTML={{ __html: prepared?.a.html ?? "" }}
+                  onQueue={setBackQueue}
+                  typedAnswer={typedAnswer}
                 />
               </motion.div>
             </div>
@@ -426,7 +396,10 @@ function Session({
                   transition={{ duration: fadeDuration }}
                 >
                   <Button className="w-full" onClick={() => setRevealed(true)}>
-                    Show answer <span className="ml-2 text-xs opacity-70">Space</span>
+                    Show answer
+                    <Kbd className="ml-2 border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground/80">
+                      Space
+                    </Kbd>
                   </Button>
                 </motion.div>
               )}
@@ -434,7 +407,7 @@ function Session({
 
             {/* Card actions: audio / suspend / bury / flag */}
             <div className="mt-3 flex items-center justify-end gap-1">
-              {currentSounds.length > 0 && (
+              {currentQueue.length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -489,7 +462,7 @@ function Session({
                       transition={{ duration: dur.fast, ease }}
                       role="menu"
                       aria-label="Set flag"
-                      className="absolute bottom-full right-0 mb-1 flex overflow-hidden rounded-lg border border-border bg-popover shadow-md"
+                      className="glass-panel absolute bottom-full right-0 mb-1 flex overflow-hidden rounded-lg border shadow-md"
                     >
                       {[0, 1, 2, 3, 4].map((f) => (
                         <button
@@ -507,6 +480,16 @@ function Session({
                 </AnimatePresence>
               </div>
             </div>
+
+            {!focusMode && (
+              <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70">
+                <Kbd>Space</Kbd> reveal
+                <span className="mx-1">·</span>
+                <Kbd>1–4</Kbd> rate
+                <span className="mx-1">·</span>
+                <Kbd>F</Kbd> focus
+              </div>
+            )}
           </div>
         </motion.div>
       ) : (
@@ -515,12 +498,42 @@ function Session({
           title="All done"
           description="No more cards due in this deck right now. Nice work."
           action={
-            <Button variant="outline" onClick={onExit}>
-              Back to decks
-            </Button>
+            <div className="flex flex-col items-center gap-3">
+              <Button variant="outline" onClick={onExit}>
+                Back to decks
+              </Button>
+              <ExtendTodayLimit
+                deckId={deckId}
+                onDone={() =>
+                  void queryClient.refetchQueries({ queryKey: queryKeys.queue(String(deckId)) })
+                }
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs text-muted-foreground"
+                onClick={() => setOptionsOpen(true)}
+              >
+                <Settings className="size-3.5" />
+                Deck options
+              </Button>
+            </div>
           }
         />
       )}
+
+      <AnimatePresence>
+        {optionsOpen && deckName && (
+          <DeckOptionsDialog
+            deckId={deckId}
+            deckName={deckName}
+            onClose={() => setOptionsOpen(false)}
+            onSaved={() =>
+              void queryClient.invalidateQueries({ queryKey: queryKeys.queue(String(deckId)) })
+            }
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

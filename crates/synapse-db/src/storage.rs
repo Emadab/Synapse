@@ -446,15 +446,28 @@ impl Storage for SqliteStorage {
     }
 
     fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary> {
+        self.import_with_progress(model, &mut |_, _| {})
+    }
+
+    fn import_with_progress(
+        &self,
+        model: &CanonicalModel,
+        on_progress: &mut dyn FnMut(u32, u32),
+    ) -> CoreResult<ImportSummary> {
         let mut conn = self.lock();
         let tx = conn.transaction().map_err(storage_err)?;
-        let summary = import::import(&tx, model)?;
+        let summary = import::import(&tx, model, on_progress)?;
         tx.commit().map_err(storage_err)?;
         Ok(summary)
     }
 
     fn ensure_collection(&self, now_ms: i64) -> CoreResult<i64> {
-        study::ensure_collection(&self.lock(), now_ms)
+        let created = study::ensure_collection(&self.lock(), now_ms)?;
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(storage_err)?;
+        crate::stock::seed_if_empty(&tx, now_ms)?;
+        tx.commit().map_err(storage_err)?;
+        Ok(created)
     }
 
     fn study_queue(
@@ -526,6 +539,10 @@ impl Storage for SqliteStorage {
         study::deck_due_counts(&self.lock(), today, now_ms, today_end_ms)
     }
 
+    fn cards_due_ms(&self, card_ids: &[i64]) -> CoreResult<std::collections::HashMap<i64, i64>> {
+        study::cards_due_ms(&self.lock(), card_ids)
+    }
+
     fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)> {
         study::deck_limits(&self.lock(), config_id)
     }
@@ -559,8 +576,28 @@ impl Storage for SqliteStorage {
         study::get_deck_config(&self.lock(), config_id)
     }
 
+    fn day_extra_new(&self, deck_id: i64, day: i32) -> CoreResult<u32> {
+        study::day_extra_new(&self.lock(), deck_id, day)
+    }
+
+    fn all_day_extra_new(&self, day: i32) -> CoreResult<std::collections::HashMap<i64, u32>> {
+        study::all_day_extra_new(&self.lock(), day)
+    }
+
+    fn set_day_extra_new(&self, deck_id: i64, day: i32, extra_new: u32) -> CoreResult<()> {
+        study::set_day_extra_new(&self.lock(), deck_id, day, extra_new)
+    }
+
     fn set_deck_config(&self, config_id: i64, config: &SchedConfig, now_ms: i64) -> CoreResult<()> {
         study::set_deck_config(&self.lock(), config_id, config, now_ms)
+    }
+
+    fn get_rollover_hour(&self) -> CoreResult<u8> {
+        study::get_rollover_hour(&self.lock())
+    }
+
+    fn set_rollover_hour(&self, hour: u8, now_ms: i64) -> CoreResult<()> {
+        study::set_rollover_hour(&self.lock(), hour, now_ms)
     }
 
     fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>> {
@@ -599,8 +636,29 @@ impl Storage for SqliteStorage {
         browse::update_note(&self.lock(), note_id, fields, tags, now_ms)
     }
 
-    fn stats(&self, today: i32, now_ms: i64) -> CoreResult<StatsDto> {
-        stats::stats(&self.lock(), today, now_ms)
+    #[allow(clippy::too_many_arguments)]
+    fn stats(
+        &self,
+        deck_ids: Option<&[i64]>,
+        days: Option<u32>,
+        tz_offset_minutes: i32,
+        fsrs_weights: &[f64; 21],
+        retention_goal_pct: f64,
+        today: i32,
+        now_ms: i64,
+        created_ms: i64,
+    ) -> CoreResult<StatsDto> {
+        stats::stats(
+            &self.lock(),
+            deck_ids,
+            days,
+            tz_offset_minutes,
+            fsrs_weights,
+            retention_goal_pct,
+            today,
+            now_ms,
+            created_ms,
+        )
     }
 
     fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>> {
@@ -664,6 +722,19 @@ impl Storage for SqliteStorage {
 
     fn rename_notetype(&self, notetype_id: i64, name: &str, now_ms: i64) -> CoreResult<()> {
         notetype::rename_notetype(&self.lock(), notetype_id, name, now_ms)
+    }
+
+    fn stock_notetype_names(&self) -> Vec<&'static str> {
+        crate::stock::stock_names()
+    }
+
+    fn add_stock_notetype(&self, index: usize, now_ms: i64) -> CoreResult<i64> {
+        let id = crate::stock::add_stock(&self.lock(), index, now_ms)?;
+        Ok(id)
+    }
+
+    fn save_notetype_css(&self, notetype_id: i64, css: &str, now_ms: i64) -> CoreResult<()> {
+        notetype::save_notetype_css(&self.lock(), notetype_id, css, now_ms)
     }
 
     fn add_field(&self, notetype_id: i64, name: &str, now_ms: i64) -> CoreResult<()> {
@@ -858,7 +929,7 @@ mod tests {
     #[test]
     fn migrations_apply_and_seed_defaults() {
         let s = storage();
-        assert_eq!(s.schema_version().unwrap(), 1);
+        assert_eq!(s.schema_version().unwrap(), 2);
         // The seeded Default deck is present.
         let decks = s.list_decks().unwrap();
         assert_eq!(decks.len(), 1);

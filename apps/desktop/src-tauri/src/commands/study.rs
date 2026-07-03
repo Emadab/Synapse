@@ -17,7 +17,7 @@ pub fn get_next_card(
 ) -> IpcResult<Option<StudyCardDto>> {
     collection.start_study_session(deck_id)?;
     match collection.next_card(deck_id)? {
-        Some(card) => Ok(Some(present(&collection, card))),
+        Some(card) => Ok(Some(present(&collection, card, deck_id))),
         None => Ok(None),
     }
 }
@@ -27,6 +27,7 @@ pub fn answer_card(
     collection: State<'_, Collection>,
     card_id: i64,
     rating: u8,
+    deck_id: i64,
 ) -> IpcResult<Option<StudyCardDto>> {
     let rating = rating_from(rating)?;
     let card = collection.study_card(card_id)?.ok_or_else(|| IpcError {
@@ -76,8 +77,8 @@ pub fn answer_card(
         leech_threshold,
     )?;
 
-    match collection.next_card(card.deck_id)? {
-        Some(next) => Ok(Some(present(&collection, next))),
+    match collection.next_card(deck_id)? {
+        Some(next) => Ok(Some(present(&collection, next, deck_id))),
         None => Ok(None),
     }
 }
@@ -95,7 +96,10 @@ fn rating_from(value: u8) -> IpcResult<Rating> {
     }
 }
 
-fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
+/// `session_deck_id` is the deck the session was started on (may be a parent
+/// with subdecks); remaining counts are rolled up over its whole subtree, not
+/// just `card`'s own (possibly child) deck.
+fn present(collection: &Collection, card: StudyCard, session_deck_id: i64) -> StudyCardDto {
     let rendered = render(&RenderRequest {
         template: Template {
             qfmt: &card.render.qfmt,
@@ -104,6 +108,13 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
         fields: &card.render.fields,
         card_ord: card.render.card_ord,
         is_cloze: card.render.is_cloze,
+        tags: &card.render.tags,
+        deck: &card.render.deck,
+        subdeck: &card.render.subdeck,
+        notetype: &card.render.notetype,
+        card_name: &card.render.card_name,
+        flag: card.render.flag,
+        occlusion_mode: &card.render.occlusion_mode,
     });
 
     let config = collection
@@ -117,7 +128,7 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
     };
     let previews = scheduler.preview(&card.state, &ctx);
     let (new_count, learning_count, review_count) = collection
-        .count_due_by_type(card.deck_id)
+        .count_due_by_type(session_deck_id)
         .unwrap_or((0, 0, 0));
 
     let card_phase = match card.state.phase {
@@ -133,6 +144,7 @@ fn present(collection: &Collection, card: StudyCard) -> StudyCardDto {
         deck_id: card.deck_id,
         question: rendered.question,
         answer: rendered.answer,
+        css: card.render.css.clone(),
         again: label(previews.again),
         hard: label(previews.hard),
         good: label(previews.good),

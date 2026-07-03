@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 synapse-core.workspace = true
+synapse-scheduler.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # Bundled SQLite: compiled from source via cc (MSVC/clang). No system SQLite needed.

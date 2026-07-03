@@ -1,7 +1,7 @@
 //! Deck commands. Delegate to the managed [`Collection`]; `?` converts
 //! `CoreError` into the serialisable [`IpcError`] union returned to the UI.
 
-use synapse_core::ipc::{DeckConfig, DeckSummary, IpcError};
+use synapse_core::ipc::{CollectionPrefs, DeckConfig, DeckSummary, IpcError};
 use synapse_core::Collection;
 use tauri::State;
 
@@ -51,5 +51,40 @@ pub fn get_deck_config(collection: State<'_, Collection>, deck_id: i64) -> IpcRe
 #[tauri::command]
 pub fn set_deck_config(collection: State<'_, Collection>, config: DeckConfig) -> IpcResult<()> {
     collection.set_deck_config(&config)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_collection_prefs(collection: State<'_, Collection>) -> IpcResult<CollectionPrefs> {
+    Ok(collection.get_collection_prefs()?)
+}
+
+#[tauri::command]
+pub fn set_collection_prefs(
+    collection: State<'_, Collection>,
+    prefs: CollectionPrefs,
+) -> IpcResult<()> {
+    collection.set_collection_prefs(&prefs)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_local_offset(collection: State<'_, Collection>, minutes: i32) -> IpcResult<()> {
+    collection.set_local_offset_minutes(minutes);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_today_extra_new(collection: State<'_, Collection>, deck_id: i64) -> IpcResult<u32> {
+    Ok(collection.get_today_extra_new(deck_id)?)
+}
+
+#[tauri::command]
+pub fn increase_today_limit(
+    collection: State<'_, Collection>,
+    deck_id: i64,
+    extra_new: u32,
+) -> IpcResult<()> {
+    collection.increase_today_new_limit(deck_id, extra_new)?;
     Ok(())
 }

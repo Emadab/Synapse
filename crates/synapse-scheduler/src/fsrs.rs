@@ -208,7 +208,10 @@ fn fsrs6_factor(w: &[f64; 21]) -> f64 {
     0.9_f64.powf(1.0 / decay) - 1.0
 }
 
-fn retrievability(elapsed_days: f64, stability: f64, w: &[f64; 21]) -> f64 {
+/// Predicted probability of recall (0.0–1.0) after `elapsed_days` since the
+/// last review of a card with the given `stability`, under weights `w`.
+/// Exposed for the stats dashboard's retrievability panel.
+pub fn retrievability(elapsed_days: f64, stability: f64, w: &[f64; 21]) -> f64 {
     let decay = fsrs6_decay(w);
     let factor = fsrs6_factor(w);
     (1.0 + factor * elapsed_days / stability.max(0.1)).powf(decay)

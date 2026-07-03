@@ -113,6 +113,18 @@ pub trait Storage: Send + Sync {
     /// (which owns the media directory) fills it in.
     fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary>;
 
+    /// Same as [`Storage::import`], but calls `on_progress(done, total)`
+    /// periodically as notes/cards are merged, for long-running imports.
+    /// Default implementation ignores progress and defers to `import`.
+    fn import_with_progress(
+        &self,
+        model: &CanonicalModel,
+        on_progress: &mut dyn FnMut(u32, u32),
+    ) -> CoreResult<ImportSummary> {
+        let _ = on_progress;
+        self.import(model)
+    }
+
     /// Ensure the singleton collection row exists; returns its creation time
     /// (ms), which anchors the day-number used for scheduling.
     fn ensure_collection(&self, now_ms: i64) -> CoreResult<i64>;
@@ -165,6 +177,11 @@ pub trait Storage: Send + Sync {
         today_end_ms: i64,
     ) -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
 
+    /// `due` for a set of card ids, keyed by id. Used to merge several decks'
+    /// learning streams into one soonest-first order when studying a deck
+    /// with subdecks.
+    fn cards_due_ms(&self, card_ids: &[i64]) -> CoreResult<HashMap<i64, i64>>;
+
     /// `(new_per_day, rev_per_day)` from the deck config's JSON.
     fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)>;
 
@@ -192,6 +209,22 @@ pub trait Storage: Send + Sync {
 
     /// Persist full scheduling config for a `deck_config` row.
     fn set_deck_config(&self, config_id: i64, config: &SchedConfig, now_ms: i64) -> CoreResult<()>;
+
+    /// Configured day-rollover hour (0-23, local time; Anki default is 4am),
+    /// read from the `collection.config` JSON blob.
+    fn get_rollover_hour(&self) -> CoreResult<u8>;
+
+    /// Persist the day-rollover hour into the `collection.config` JSON blob.
+    fn set_rollover_hour(&self, hour: u8, now_ms: i64) -> CoreResult<()>;
+
+    /// Extra new-card allowance for `deck_id` on collection-day `day` (0 if none set).
+    fn day_extra_new(&self, deck_id: i64, day: i32) -> CoreResult<u32>;
+
+    /// Extra new-card allowances for every deck on collection-day `day`, keyed by deck_id.
+    fn all_day_extra_new(&self, day: i32) -> CoreResult<HashMap<i64, u32>>;
+
+    /// Upsert the extra new-card allowance for `deck_id` on `day`.
+    fn set_day_extra_new(&self, deck_id: i64, day: i32, extra_new: u32) -> CoreResult<()>;
 
     /// Render inputs + scheduling state for one card.
     fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>>;
@@ -222,7 +255,27 @@ pub trait Storage: Send + Sync {
     ) -> CoreResult<()>;
 
     /// Aggregate statistics (review history, forecast, card maturity).
-    fn stats(&self, today: i32, now_ms: i64) -> CoreResult<StatsDto>;
+    ///
+    /// `deck_ids` restricts to those decks (already resolved to include subdeck
+    /// rollup), or `None` for the whole collection. `days` restricts
+    /// range-scoped aggregates (totals, retention, answer buttons, hourly), or
+    /// `None` for all time. `tz_offset_minutes` shifts only the hourly bucketing
+    /// into local time. `fsrs_weights`/`retention_goal_pct` are the relevant
+    /// deck's trained FSRS weights and desired retention (or the collection
+    /// defaults when no single deck is selected), used for the retrievability
+    /// panel and the retention goal line.
+    #[allow(clippy::too_many_arguments)]
+    fn stats(
+        &self,
+        deck_ids: Option<&[i64]>,
+        days: Option<u32>,
+        tz_offset_minutes: i32,
+        fsrs_weights: &[f64; 21],
+        retention_goal_pct: f64,
+        today: i32,
+        now_ms: i64,
+        created_ms: i64,
+    ) -> CoreResult<StatsDto>;
 
     /// All notes flattened for (re)building the search index.
     fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>>;
@@ -262,11 +315,22 @@ pub trait Storage: Send + Sync {
     /// Create a new note type seeded with default fields/template. Returns the new id.
     fn create_notetype(&self, name: &str, kind: i64, now_ms: i64) -> CoreResult<i64>;
 
+    /// Names of the built-in stock note types (Basic, Cloze, …), in a stable
+    /// order matching `add_stock_notetype`'s index.
+    fn stock_notetype_names(&self) -> Vec<&'static str>;
+
+    /// Add one built-in stock note type (by index into `stock_notetype_names`)
+    /// to the collection. Returns the new id.
+    fn add_stock_notetype(&self, index: usize, now_ms: i64) -> CoreResult<i64>;
+
     /// Delete a note type. Fails with `Invalid` if any notes reference it.
     fn delete_notetype(&self, notetype_id: i64, now_ms: i64) -> CoreResult<()>;
 
     /// Rename a note type.
     fn rename_notetype(&self, notetype_id: i64, name: &str, now_ms: i64) -> CoreResult<()>;
+
+    /// Save a note type's custom card CSS.
+    fn save_notetype_css(&self, notetype_id: i64, css: &str, now_ms: i64) -> CoreResult<()>;
 
     /// Add a field at the end of `notetype_id`; appends an empty value to every
     /// existing note of that type.
