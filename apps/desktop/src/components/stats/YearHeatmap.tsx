@@ -1,7 +1,7 @@
 import type { DayCount } from "@synapse/ipc-types";
 import { sequential } from "./chartTheme";
 
-const WEEKS = 52;
+const DEFAULT_WEEKS = 52;
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Current + longest consecutive-day streaks, counting back from `today` (collection-relative day). */
@@ -40,9 +40,20 @@ function heatColor(count: number): string {
   return sequential[4];
 }
 
-export function YearHeatmap({ reviews, today, day0Ms }: { reviews: DayCount[]; today: number; day0Ms: number }) {
+export function YearHeatmap({
+  reviews,
+  today,
+  day0Ms,
+  weeks = DEFAULT_WEEKS,
+}: {
+  reviews: DayCount[];
+  today: number;
+  day0Ms: number;
+  /** Window width in weeks — defaults to a full year; pass a smaller value for compact use. */
+  weeks?: number;
+}) {
   const counts = new Map(reviews.map((d) => [d.day, d.count]));
-  const days = WEEKS * 7;
+  const days = weeks * 7;
   const start = today - (days - 1);
   const cells = Array.from({ length: days }, (_, i) => {
     const day = start + i;

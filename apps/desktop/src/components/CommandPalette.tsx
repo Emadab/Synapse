@@ -13,6 +13,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useTheme } from "@/stores/theme";
+import { useUi } from "@/stores/ui";
 import { isTauri, pickAndImportPackage, pickAndExportPackage } from "@/lib/ipc";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
@@ -29,6 +30,7 @@ export function CommandPalette() {
   const { resolved, setTheme } = useTheme();
   const queryClient = useQueryClient();
   const tauri = isTauri();
+  const paletteOpenSignal = useUi((s) => s.paletteOpenSignal);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -40,6 +42,11 @@ export function CommandPalette() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+
+  // Signal-based open request from chrome outside this component (e.g. TitleBar).
+  useEffect(() => {
+    if (paletteOpenSignal > 0) setOpen(true);
+  }, [paletteOpenSignal]);
 
   const close = () => setOpen(false);
 
@@ -59,7 +66,7 @@ export function CommandPalette() {
       onOpenChange={setOpen}
       label="Command palette"
       overlayClassName="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0"
-      contentClassName="fixed left-1/2 top-[18%] z-50 w-full max-w-lg -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl data-[state=open]:animate-fade-in"
+      contentClassName="glass-panel fixed left-1/2 top-[18%] z-50 w-full max-w-lg -translate-x-1/2 overflow-hidden rounded-xl border text-popover-foreground shadow-2xl data-[state=open]:animate-fade-in"
     >
       <Command.Input
         placeholder="Type a command or search…"

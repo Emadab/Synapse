@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { listen } from "@tauri-apps/api/event";
 import { AnimatePresence, motion } from "framer-motion";
-import { Download, Filter, Layers, Plus, Undo2 } from "lucide-react";
+import { Download, Filter, LayoutGrid, Layers, List, Plus, Sparkles, Undo2 } from "lucide-react";
 import type { DeckSummary, FilteredDeckConfig, ImportProgress, ImportSummary } from "@synapse/ipc-types";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -11,12 +11,47 @@ import { Button } from "@/components/ui/button";
 import { DeckOptionsDialog } from "@/components/DeckOptionsDialog";
 import { CreateDeckForm } from "@/components/decks/CreateDeckForm";
 import { DeckRow } from "@/components/decks/DeckRow";
+import { DeckGridCard } from "@/components/decks/DeckGridCard";
+import { HomeHero } from "@/components/decks/HomeHero";
 import { DeleteDeckDialog } from "@/components/decks/DeleteDeckDialog";
 import { FilteredDeckDialog } from "@/components/decks/FilteredDeckDialog";
 import { TodaySummary } from "@/components/decks/TodaySummary";
 import { errorMessage, ipc, isTauri, pickAndImportPackage } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
 import { listItem, staggerList } from "@/lib/motion";
+import { useUi, type HomeLayout } from "@/stores/ui";
+import { cn } from "@/lib/utils";
+
+const LAYOUT_OPTIONS: { value: HomeLayout; icon: typeof List; label: string }[] = [
+  { value: "list", icon: List, label: "List" },
+  { value: "grid", icon: LayoutGrid, label: "Grid" },
+  { value: "hero", icon: Sparkles, label: "List + hero" },
+];
+
+function LayoutSwitcher({ value, onChange }: { value: HomeLayout; onChange: (v: HomeLayout) => void }) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-md border border-border bg-secondary/50 p-0.5">
+      {LAYOUT_OPTIONS.map(({ value: v, icon: Icon, label }) => (
+        <button
+          key={v}
+          type="button"
+          title={label}
+          aria-label={label}
+          aria-pressed={value === v}
+          onClick={() => onChange(v)}
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded transition-colors",
+            value === v
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Icon className="size-3.5" />
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function DeckBrowserScreen() {
   const queryClient = useQueryClient();
@@ -105,6 +140,8 @@ export function DeckBrowserScreen() {
   });
 
   const decks = decksQuery.data ?? [];
+  const homeLayout = useUi((s) => s.homeLayout);
+  const setHomeLayout = useUi((s) => s.setHomeLayout);
 
   async function openRebuild(deck: DeckSummary) {
     const cfg = await ipc.getFilteredConfig(deck.id);
@@ -124,6 +161,7 @@ export function DeckBrowserScreen() {
           <>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => importMut.mutate()}
               disabled={!tauri || importMut.isPending}
               title="Import an Anki .apkg / .colpkg"
@@ -137,6 +175,7 @@ export function DeckBrowserScreen() {
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => undoMut.mutate()}
               disabled={!tauri || undoMut.isPending}
               title="Undo the last change"
@@ -145,15 +184,17 @@ export function DeckBrowserScreen() {
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => setShowFilteredDialog(true)}
               disabled={!tauri}
               title="Create a filtered (custom study) deck"
             >
               <Filter /> Filtered
             </Button>
-            <Button onClick={() => setCreating((value) => !value)} disabled={!tauri}>
+            <Button size="sm" onClick={() => setCreating((value) => !value)} disabled={!tauri}>
               <Plus /> New deck
             </Button>
+            <LayoutSwitcher value={homeLayout} onChange={setHomeLayout} />
           </>
         }
       />
@@ -162,6 +203,10 @@ export function DeckBrowserScreen() {
         <AnimatePresence initial={false}>
           {creating && <CreateDeckForm onClose={() => setCreating(false)} />}
         </AnimatePresence>
+
+        {tauri && homeLayout === "hero" && decks.length > 0 && (
+          <HomeHero decks={decks} onStudy={studyDeck} />
+        )}
 
         {importMut.isError ? (
           <p className="px-8 py-2 text-sm text-destructive">
@@ -197,8 +242,46 @@ export function DeckBrowserScreen() {
           <EmptyState
             icon={Layers}
             title="No decks yet"
-            description="Create a deck above, or import an .apkg / .colpkg with the Import button."
+            description="Start a new deck, or bring in an existing Anki collection."
+            action={
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => setCreating(true)}>
+                  <Plus /> New deck
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => importMut.mutate()}
+                  disabled={importMut.isPending}
+                >
+                  <Download /> Import from Anki
+                </Button>
+              </div>
+            }
           />
+        ) : homeLayout === "grid" ? (
+          <motion.div
+            variants={staggerList}
+            initial="hidden"
+            animate="show"
+            className="grid grid-cols-1 gap-3 p-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          >
+            <AnimatePresence>
+              {decks.map((deck: DeckSummary) => (
+                <motion.div key={deck.id} variants={listItem} exit={{ opacity: 0, scale: 0.96 }}>
+                  <DeckGridCard
+                    deck={deck}
+                    onStudy={() => studyDeck(deck)}
+                    onRename={(name) => renameMut.mutate({ id: deck.id, name })}
+                    onOptions={() => setOptionsDeck(deck)}
+                    onDelete={() => setPendingDelete(deck)}
+                    onRebuild={() => void openRebuild(deck)}
+                    onEmpty={() => emptyMut.mutate(deck.id)}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
         ) : (
           <>
             <div className="flex items-center justify-end gap-1 px-8 pb-1 pt-3 text-xs font-medium text-muted-foreground">

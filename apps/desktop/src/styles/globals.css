@@ -6,13 +6,13 @@
    Values are HSL triplets so Tailwind can wrap them with hsl(var(--token)). */
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 220 20% 99%;
     --foreground: 224 24% 12%;
     --card: 0 0% 100%;
     --card-foreground: 224 24% 12%;
     --popover: 0 0% 100%;
     --popover-foreground: 224 24% 12%;
-    --primary: 243 75% 59%;
+    --primary: 226 50% 52%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 14% 96%;
     --secondary-foreground: 224 24% 16%;
@@ -22,14 +22,19 @@
     --accent-foreground: 224 24% 16%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 243 75% 59%;
-    --radius: 0.65rem;
+    --border: 220 14% 93%;
+    --input: 220 14% 93%;
+    --ring: 226 50% 52%;
+    --radius: 0.75rem;
 
-    --sidebar: 220 20% 98%;
+    --sidebar: 220 20% 97.5%;
     --sidebar-foreground: 224 16% 28%;
     --sidebar-accent: 220 14% 94%;
+
+    /* Glass surfaces — translucent chrome over scrolled content. */
+    --glass-chrome-bg: 220 20% 99% / 0.72;
+    --glass-panel-bg: 0 0% 100% / 0.82;
+    --glass-border: 220 14% 93% / 0.6;
 
     /* Chart categorical series, fixed order — never cycled or reassigned by filters. */
     --chart-1: 213 68% 50%; /* blue */
@@ -49,11 +54,11 @@
   .dark {
     --background: 224 28% 7%;
     --foreground: 220 16% 92%;
-    --card: 224 26% 9%;
+    --card: 224 26% 10%;
     --card-foreground: 220 16% 92%;
-    --popover: 224 26% 9%;
+    --popover: 224 26% 10%;
     --popover-foreground: 220 16% 92%;
-    --primary: 243 80% 70%;
+    --primary: 226 60% 65%;
     --primary-foreground: 224 40% 10%;
     --secondary: 222 20% 16%;
     --secondary-foreground: 220 16% 92%;
@@ -63,13 +68,17 @@
     --accent-foreground: 220 16% 92%;
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 222 18% 18%;
-    --input: 222 18% 20%;
-    --ring: 243 80% 70%;
+    --border: 224 20% 15%;
+    --input: 224 20% 17%;
+    --ring: 226 60% 65%;
 
     --sidebar: 224 30% 6%;
     --sidebar-foreground: 220 14% 70%;
     --sidebar-accent: 222 20% 14%;
+
+    --glass-chrome-bg: 224 28% 7% / 0.7;
+    --glass-panel-bg: 224 26% 10% / 0.82;
+    --glass-border: 224 20% 15% / 0.6;
 
     --chart-1: 213 78% 63%;
     --chart-2: 160 56% 37%;
@@ -111,6 +120,12 @@
     color-scheme: dark;
   }
 
+  h1,
+  h2,
+  h3 {
+    @apply tracking-tight;
+  }
+
   /* Honour reduced-motion: disable non-essential animations. */
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -137,5 +152,37 @@
   }
   .synapse-prose:focus {
     @apply outline-none;
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Chrome surfaces (titlebar, sidebar, sticky screen headers): translucent
+     over scrolled content. Falls back to a solid surface where backdrop-filter
+     isn't supported. */
+  .glass-chrome {
+    background-color: hsl(var(--glass-chrome-bg));
+    border-color: hsl(var(--glass-border));
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-chrome {
+      background-color: hsl(var(--background));
+    }
+  }
+
+  /* Floating panels: command palette, dialogs, popovers, study HUD. */
+  .glass-panel {
+    background-color: hsl(var(--glass-panel-bg));
+    border-color: hsl(var(--glass-border));
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    backdrop-filter: blur(24px) saturate(1.5);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-panel {
+      background-color: hsl(var(--popover));
+    }
   }
 }

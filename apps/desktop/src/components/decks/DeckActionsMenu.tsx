@@ -84,7 +84,7 @@ export function DeckActionsMenu({
             transition={{ duration: dur.fast, ease }}
             role="menu"
             aria-label={`Actions for ${deck.name}`}
-            className="absolute right-0 top-full z-20 mt-1 w-60 overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-md"
+            className="glass-panel absolute right-0 top-full z-20 mt-1 w-60 overflow-hidden rounded-lg border py-1 shadow-md"
           >
             <MenuItem icon={<Play />} label="Study" onClick={pick(onStudy)} />
             {!deck.is_filtered && (

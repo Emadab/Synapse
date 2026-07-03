@@ -2,7 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Flag, MinusCircle, Settings, SkipForward, Volume2 } from "lucide-react";
+import {
+  Check,
+  Flag,
+  Maximize2,
+  Minimize2,
+  MinusCircle,
+  Settings,
+  SkipForward,
+  Volume2,
+} from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -10,11 +19,13 @@ import { CardFace } from "@/components/CardFace";
 import { DeckOptionsDialog } from "@/components/DeckOptionsDialog";
 import { DeckCounts } from "@/components/decks/DeckCounts";
 import { ExtendTodayLimit } from "@/components/decks/IncreaseLimitControl";
+import { Kbd } from "@/components/Kbd";
 import { ipc, isTauri, Rating, type RatingValue } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
 import { mediaUrl, type QueueEntry } from "@/lib/renderCard";
 import { dur, ease, listItem, staggerList, useReducedMotion } from "@/lib/motion";
 import { useTheme } from "@/stores/theme";
+import { useUi } from "@/stores/ui";
 import { speak, cancelSpeech } from "@/lib/tts";
 
 const FLAG_COLORS: Record<number, string> = {
@@ -38,7 +49,11 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
   const [revealed, setRevealed] = useState(false);
   const [flagMenuOpen, setFlagMenuOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [sessionAnswered, setSessionAnswered] = useState(0);
   const flagRef = useRef<HTMLDivElement>(null);
+  const focusMode = useUi((s) => s.focusMode);
+  const toggleFocusMode = useUi((s) => s.toggleFocusMode);
+  const setFocusMode = useUi((s) => s.setFocusMode);
 
   const deckName = useQuery({
     queryKey: queryKeys.decks,
@@ -61,6 +76,7 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
     onSuccess: (next) => {
       queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
       setRevealed(false);
+      setSessionAnswered((n) => n + 1);
     },
   });
 
@@ -155,6 +171,25 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const typing =
+        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+
+      // Esc exits focus mode regardless of typing state; otherwise ignore
+      // shortcuts while the user is typing (e.g. into the type-answer field).
+      if (e.key === "Escape") {
+        if (focusMode) {
+          e.preventDefault();
+          setFocusMode(false);
+        }
+        return;
+      }
+      if (typing) return;
+
+      if (e.key === "f" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+      }
       if (!card || answerMut.isPending || actionBusy) return;
       if (e.key === "r" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
@@ -183,16 +218,36 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [card, revealed, answerMut, actionBusy, suspendMut, buryMut, replayAudio]);
+  }, [
+    card,
+    revealed,
+    answerMut,
+    actionBusy,
+    suspendMut,
+    buryMut,
+    replayAudio,
+    focusMode,
+    setFocusMode,
+    toggleFocusMode,
+  ]);
 
   const flipDuration = prefersReduced ? 0 : dur.slow;
   const fadeDuration = prefersReduced ? 0 : dur.base;
 
+  const sessionTotal = card
+    ? sessionAnswered + card.new_count + card.learning_count + card.review_count
+    : sessionAnswered;
+  const progressFraction = sessionTotal > 0 ? sessionAnswered / sessionTotal : 0;
+
   return (
-    <div className="flex h-full flex-col">
-      <ScreenHeader
-        title={deckName ? `Studying · ${deckName}` : "Studying"}
-        actions={
+    <div className="relative flex h-full flex-col">
+      {focusMode ? (
+        <div className="glass-panel relative z-20 flex h-9 shrink-0 items-center justify-between gap-3 border-b px-4">
+          <div
+            className="absolute inset-x-0 bottom-0 h-px bg-primary/60 transition-[width] duration-300"
+            style={{ width: `${Math.round(progressFraction * 100)}%` }}
+          />
+          <span className="truncate text-[13px] text-muted-foreground">{deckName}</span>
           <div className="flex items-center gap-3">
             {card && (
               <DeckCounts
@@ -201,19 +256,62 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                 reviewCount={card.review_count}
               />
             )}
-            <Button variant="ghost" size="sm" onClick={onExit}>
-              Back to decks
-            </Button>
+            <button
+              type="button"
+              onClick={() => setFocusMode(false)}
+              title="Exit focus (Esc)"
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Minimize2 className="size-3.5" />
+            </button>
           </div>
-        }
-      />
+        </div>
+      ) : (
+        <ScreenHeader
+          title={deckName ?? "Studying"}
+          actions={
+            <div className="flex items-center gap-3">
+              {card && (
+                <DeckCounts
+                  newCount={card.new_count}
+                  learningCount={card.learning_count}
+                  reviewCount={card.review_count}
+                />
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setFocusMode(true)}
+                title="Focus mode (F)"
+              >
+                <Maximize2 className="size-3.5" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onExit}>
+                Back to decks
+              </Button>
+            </div>
+          }
+        />
+      )}
+
+      {focusMode && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0"
+          style={{
+            background:
+              "radial-gradient(ellipse at center, transparent 45%, hsl(var(--background)) 100%)",
+          }}
+        />
+      )}
+
       {card ? (
         <motion.div
           key={card.card_id}
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: fadeDuration, ease }}
-          className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-8"
+          className={`relative z-10 mx-auto flex w-full flex-1 flex-col px-6 py-8 ${focusMode ? "max-w-3xl" : "max-w-2xl"}`}
         >
           {/* Card — 3D flip (or plain div for reduced-motion) */}
           {prefersReduced ? (
@@ -296,7 +394,10 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                   transition={{ duration: fadeDuration }}
                 >
                   <Button className="w-full" onClick={() => setRevealed(true)}>
-                    Show answer <span className="ml-2 text-xs opacity-70">Space</span>
+                    Show answer
+                    <Kbd className="ml-2 border-primary-foreground/20 bg-primary-foreground/10 text-primary-foreground/80">
+                      Space
+                    </Kbd>
                   </Button>
                 </motion.div>
               )}
@@ -359,7 +460,7 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                       transition={{ duration: dur.fast, ease }}
                       role="menu"
                       aria-label="Set flag"
-                      className="absolute bottom-full right-0 mb-1 flex overflow-hidden rounded-lg border border-border bg-popover shadow-md"
+                      className="glass-panel absolute bottom-full right-0 mb-1 flex overflow-hidden rounded-lg border shadow-md"
                     >
                       {[0, 1, 2, 3, 4].map((f) => (
                         <button
@@ -377,6 +478,16 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                 </AnimatePresence>
               </div>
             </div>
+
+            {!focusMode && (
+              <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70">
+                <Kbd>Space</Kbd> reveal
+                <span className="mx-1">·</span>
+                <Kbd>1–4</Kbd> rate
+                <span className="mx-1">·</span>
+                <Kbd>F</Kbd> focus
+              </div>
+            )}
           </div>
         </motion.div>
       ) : (
