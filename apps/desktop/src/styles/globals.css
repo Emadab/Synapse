@@ -30,6 +30,20 @@
     --sidebar: 220 20% 98%;
     --sidebar-foreground: 224 16% 28%;
     --sidebar-accent: 220 14% 94%;
+
+    /* Chart categorical series, fixed order — never cycled or reassigned by filters. */
+    --chart-1: 213 68% 50%; /* blue */
+    --chart-2: 160 79% 37%; /* aqua */
+    --chart-3: 38 100% 46%; /* yellow */
+    --chart-4: 120 100% 26%; /* green */
+    --chart-5: 248 47% 43%; /* violet */
+    --chart-6: 1 74% 59%; /* red */
+    /* Sequential (magnitude) ramp, single hue light->dark, 5 steps. */
+    --seq-1: 213 87% 87%;
+    --seq-2: 213 78% 70%;
+    --seq-3: 213 68% 58%;
+    --seq-4: 213 68% 50%;
+    --seq-5: 213 69% 33%;
   }
 
   .dark {
@@ -56,6 +70,18 @@
     --sidebar: 224 30% 6%;
     --sidebar-foreground: 220 14% 70%;
     --sidebar-accent: 222 20% 14%;
+
+    --chart-1: 213 78% 63%;
+    --chart-2: 160 56% 37%;
+    --chart-3: 38 100% 39%;
+    --chart-4: 120 100% 26%;
+    --chart-5: 248 68% 74%;
+    --chart-6: 1 71% 68%;
+    --seq-1: 213 40% 24%;
+    --seq-2: 213 55% 38%;
+    --seq-3: 213 65% 50%;
+    --seq-4: 213 75% 62%;
+    --seq-5: 213 85% 78%;
   }
 }
 

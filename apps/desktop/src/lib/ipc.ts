@@ -131,7 +131,12 @@ export const ipc = {
   exportPackage: (path: string) => invoke<number>("export_package", { path }),
 
   // Statistics
-  getStats: () => invoke<StatsDto>("get_stats"),
+  getStats: (deckId: number | null, days: number | null) =>
+    invoke<StatsDto>("get_stats", {
+      deckId,
+      days,
+      tzOffsetMinutes: -new Date().getTimezoneOffset(),
+    }),
 
   // FSRS optimizer (M20)
   optimizeFsrs: (deckId: number | null) => invoke<FsrsOptimizeResult>("optimize_fsrs", { deckId }),

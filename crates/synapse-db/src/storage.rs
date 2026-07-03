@@ -599,8 +599,29 @@ impl Storage for SqliteStorage {
         browse::update_note(&self.lock(), note_id, fields, tags, now_ms)
     }
 
-    fn stats(&self, today: i32, now_ms: i64) -> CoreResult<StatsDto> {
-        stats::stats(&self.lock(), today, now_ms)
+    #[allow(clippy::too_many_arguments)]
+    fn stats(
+        &self,
+        deck_ids: Option<&[i64]>,
+        days: Option<u32>,
+        tz_offset_minutes: i32,
+        fsrs_weights: &[f64; 21],
+        retention_goal_pct: f64,
+        today: i32,
+        now_ms: i64,
+        created_ms: i64,
+    ) -> CoreResult<StatsDto> {
+        stats::stats(
+            &self.lock(),
+            deck_ids,
+            days,
+            tz_offset_minutes,
+            fsrs_weights,
+            retention_goal_pct,
+            today,
+            now_ms,
+            created_ms,
+        )
     }
 
     fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>> {

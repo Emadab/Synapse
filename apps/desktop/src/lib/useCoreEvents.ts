@@ -28,7 +28,7 @@ export function useCoreEvents() {
         payload === "notes-changed" ||
         payload === "schema-changed"
       ) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.stats });
+        void queryClient.invalidateQueries({ queryKey: ["stats"] });
       }
     });
 

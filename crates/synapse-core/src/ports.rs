@@ -222,7 +222,27 @@ pub trait Storage: Send + Sync {
     ) -> CoreResult<()>;
 
     /// Aggregate statistics (review history, forecast, card maturity).
-    fn stats(&self, today: i32, now_ms: i64) -> CoreResult<StatsDto>;
+    ///
+    /// `deck_ids` restricts to those decks (already resolved to include subdeck
+    /// rollup), or `None` for the whole collection. `days` restricts
+    /// range-scoped aggregates (totals, retention, answer buttons, hourly), or
+    /// `None` for all time. `tz_offset_minutes` shifts only the hourly bucketing
+    /// into local time. `fsrs_weights`/`retention_goal_pct` are the relevant
+    /// deck's trained FSRS weights and desired retention (or the collection
+    /// defaults when no single deck is selected), used for the retrievability
+    /// panel and the retention goal line.
+    #[allow(clippy::too_many_arguments)]
+    fn stats(
+        &self,
+        deck_ids: Option<&[i64]>,
+        days: Option<u32>,
+        tz_offset_minutes: i32,
+        fsrs_weights: &[f64; 21],
+        retention_goal_pct: f64,
+        today: i32,
+        now_ms: i64,
+        created_ms: i64,
+    ) -> CoreResult<StatsDto>;
 
     /// All notes flattened for (re)building the search index.
     fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>>;

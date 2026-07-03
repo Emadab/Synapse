@@ -351,9 +351,60 @@ impl Collection {
         Ok(())
     }
 
-    /// Aggregate statistics for the dashboards.
-    pub fn stats(&self) -> CoreResult<StatsDto> {
-        self.storage.stats(self.today(), self.clock.now_ms())
+    /// Aggregate statistics for the dashboards. `deck_id` selects a deck plus
+    /// all of its subdecks (rollup via `parent_id`), or `None` for the whole
+    /// collection. `days` restricts range-scoped aggregates, or `None` for all
+    /// time. `tz_offset_minutes` (`-Date#getTimezoneOffset()`) shifts only the
+    /// hourly breakdown into local time.
+    pub fn stats(
+        &self,
+        deck_id: Option<i64>,
+        days: Option<u32>,
+        tz_offset_minutes: i32,
+    ) -> CoreResult<StatsDto> {
+        let deck_ids = match deck_id {
+            Some(root) => Some(self.deck_and_descendants(root)?),
+            None => None,
+        };
+        let (fsrs_weights, retention_goal_pct) = match deck_id {
+            Some(id) => {
+                let cfg = self.get_sched_config(id)?;
+                (cfg.fsrs_weights, cfg.desired_retention * 100.0)
+            }
+            None => (crate::scheduling::FSRS6_DEFAULT_WEIGHTS, 90.0),
+        };
+        self.storage.stats(
+            deck_ids.as_deref(),
+            days,
+            tz_offset_minutes,
+            &fsrs_weights,
+            retention_goal_pct,
+            self.today(),
+            self.clock.now_ms(),
+            self.created_ms,
+        )
+    }
+
+    /// `root` plus every deck nested under it (transitively), via `parent_id`.
+    fn deck_and_descendants(&self, root: i64) -> CoreResult<Vec<i64>> {
+        let decks = self.storage.list_decks()?;
+        let mut children: std::collections::HashMap<i64, Vec<i64>> = std::collections::HashMap::new();
+        for d in &decks {
+            if let Some(p) = d.parent_id {
+                children.entry(p).or_default().push(d.id);
+            }
+        }
+        let mut ids = vec![root];
+        let mut stack = vec![root];
+        while let Some(id) = stack.pop() {
+            if let Some(kids) = children.get(&id) {
+                for &k in kids {
+                    ids.push(k);
+                    stack.push(k);
+                }
+            }
+        }
+        Ok(ids)
     }
 
     /// All notes flattened for (re)building the search index.
@@ -1049,7 +1100,18 @@ mod tests {
         ) -> CoreResult<()> {
             Ok(())
         }
-        fn stats(&self, _today: i32, _now_ms: i64) -> CoreResult<crate::ipc::StatsDto> {
+        #[allow(clippy::too_many_arguments)]
+        fn stats(
+            &self,
+            _deck_ids: Option<&[i64]>,
+            _days: Option<u32>,
+            _tz_offset_minutes: i32,
+            _fsrs_weights: &[f64; 21],
+            _retention_goal_pct: f64,
+            _today: i32,
+            _now_ms: i64,
+            _created_ms: i64,
+        ) -> CoreResult<crate::ipc::StatsDto> {
             Ok(crate::ipc::StatsDto::default())
         }
         fn index_rows(&self) -> CoreResult<Vec<NoteIndexRow>> {

@@ -285,14 +285,78 @@ pub struct DayCount {
     pub count: u32,
 }
 
+/// One week of true-retention pass rates, split by card phase at review time.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RetentionWeek {
+    /// Collection-relative day of the week's first day, divided by 7.
+    #[ts(type = "number")]
+    pub week_index: i64,
+    pub young_total: u32,
+    pub young_passed: u32,
+    pub mature_total: u32,
+    pub mature_passed: u32,
+}
+
+/// Counts per answer button (index 0..=3 = Again/Hard/Good/Easy), split by phase.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AnswerButtons {
+    pub learning: Vec<u32>,
+    pub young: Vec<u32>,
+    pub mature: Vec<u32>,
+}
+
+/// Reviews grouped by local hour-of-day (0..=23).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct HourlyStat {
+    pub hour: u8,
+    pub total: u32,
+    pub passed: u32,
+}
+
+/// FSRS memory-model distributions for cards that have been scheduled by FSRS.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct FsrsStats {
+    pub card_count: u32,
+    /// Stability buckets: <1d, 1-7d, 7-21d, 21-90d, 90-180d, 180-365d, 365d+.
+    pub stability_buckets: Vec<u32>,
+    /// Difficulty buckets 1..=10.
+    pub difficulty_buckets: Vec<u32>,
+    /// Mean predicted retrievability across all FSRS cards now, 0-100.
+    pub avg_retrievability: Option<f64>,
+}
+
+/// Per-deck rollup row for the stats deck breakdown table.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DeckStat {
+    #[ts(type = "number")]
+    pub deck_id: i64,
+    pub name: String,
+    #[ts(type = "number | null")]
+    pub parent_id: Option<i64>,
+    pub total_cards: u32,
+    pub due_today: u32,
+    pub new_count: u32,
+    /// True retention over the last 30 days, as a percentage (0-100).
+    pub retention_pct: f64,
+    pub reviews_7d: u32,
+}
+
 /// Aggregate collection statistics for the dashboards.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct StatsDto {
     pub total_reviews: u32,
     pub studied_days: u32,
-    /// Pass rate over the last 30 days, as a percentage (0–100).
+    /// True-retention pass rate over the selected range, as a percentage (0–100).
     pub retention_pct: f64,
+    /// Target retention for the reference line: the filtered deck's FSRS
+    /// `desired_retention` when set, else the default (90%). 0–100.
+    pub retention_goal_pct: f64,
     #[ts(type = "number")]
     pub total_time_ms: i64,
     pub new_count: u32,
@@ -300,10 +364,23 @@ pub struct StatsDto {
     pub young_count: u32,
     pub mature_count: u32,
     pub suspended_count: u32,
-    /// Reviews per epoch-day (all time), ascending.
+    /// Reviews per collection-relative day (all time), ascending.
     pub reviews: Vec<DayCount>,
     /// Due review cards per day-offset (0..=30 from today).
     pub forecast: Vec<DayCount>,
+    /// Cards already overdue (due < today).
+    pub backlog_count: u32,
+    /// Anchor for mapping day indices in `reviews`/`forecast` to calendar dates:
+    /// collection-day `d` started at `day0_ms + d * 86_400_000`.
+    #[ts(type = "number")]
+    pub day0_ms: i64,
+    pub retention_weekly: Vec<RetentionWeek>,
+    pub answer_buttons: AnswerButtons,
+    /// Reviews by hour-of-day, shifted to the caller's local timezone.
+    pub hourly: Vec<HourlyStat>,
+    pub fsrs: FsrsStats,
+    /// Always all-decks, regardless of the `deck_id` filter; powers the deck table.
+    pub deck_stats: Vec<DeckStat>,
 }
 
 /// Result of an FSRS weight-optimization run (M20).

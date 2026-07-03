@@ -14,7 +14,7 @@ mod fsrs;
 pub mod optimizer;
 mod sm2;
 
-pub use fsrs::FsrsScheduler;
+pub use fsrs::{retrievability, FsrsScheduler};
 pub use optimizer::{optimize, OptimizeResult, MIN_REVIEWS};
 pub use sm2::Sm2Scheduler;
 

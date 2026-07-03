@@ -31,11 +31,22 @@ const browseRoute = createRoute({
   component: BrowseScreen,
   errorComponent,
 });
+export interface StatsSearch {
+  deck?: number;
+  range?: "7d" | "1m" | "3m" | "1y" | "all";
+}
+
 const statsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/stats",
   component: StatsScreen,
   errorComponent,
+  validateSearch: (search: Record<string, unknown>): StatsSearch => ({
+    deck: typeof search.deck === "number" ? search.deck : undefined,
+    range: (["7d", "1m", "3m", "1y", "all"] as const).includes(search.range as never)
+      ? (search.range as StatsSearch["range"])
+      : undefined,
+  }),
 });
 const addRoute = createRoute({
   getParentRoute: () => rootRoute,
