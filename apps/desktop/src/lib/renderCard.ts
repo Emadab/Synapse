@@ -41,7 +41,7 @@ export function prepareCard(html: string, tauri: boolean): PreparedCard {
   const queue: QueueEntry[] = [];
 
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
-  let node: Node | null = walker.currentNode;
+  let node: Node | null;
   const textNodesWithSounds: Text[] = [];
   while ((node = walker.nextNode())) {
     if (node.nodeType === Node.TEXT_NODE) {

@@ -32,7 +32,11 @@ fn hash_bytes(bytes: &[u8]) -> u64 {
     hasher.finish()
 }
 
-fn write_content_addressed(dir: &std::path::Path, bytes: &[u8], filename: &str) -> IpcResult<String> {
+fn write_content_addressed(
+    dir: &std::path::Path,
+    bytes: &[u8],
+    filename: &str,
+) -> IpcResult<String> {
     let path = std::path::Path::new(filename);
     let stem = path
         .file_stem()
@@ -92,10 +96,16 @@ mod tests {
 
         let a = write_content_addressed(&dir, b"hello", "photo.png").unwrap();
         let b = write_content_addressed(&dir, b"hello", "photo.png").unwrap();
-        assert_eq!(a, b, "identical content maps to the same file, no duplicate write");
+        assert_eq!(
+            a, b,
+            "identical content maps to the same file, no duplicate write"
+        );
 
         let c = write_content_addressed(&dir, b"different", "photo.png").unwrap();
-        assert_ne!(a, c, "different content under the same suggested name gets a distinct file");
+        assert_ne!(
+            a, c,
+            "different content under the same suggested name gets a distinct file"
+        );
 
         assert!(a.starts_with("photo-") && a.ends_with(".png"));
 

@@ -98,7 +98,12 @@ pub fn render(req: &RenderRequest<'_>) -> Rendered {
     Rendered { question, answer }
 }
 
-fn render_nodes(nodes: &[parser::Node], ctx: &RenderCtx<'_>, front_side: Option<&str>, reveal: bool) -> String {
+fn render_nodes(
+    nodes: &[parser::Node],
+    ctx: &RenderCtx<'_>,
+    front_side: Option<&str>,
+    reveal: bool,
+) -> String {
     let mut out = String::new();
     for node in nodes {
         render_node(node, ctx, front_side, reveal, &mut out);
@@ -125,7 +130,9 @@ fn render_node(
             }
         }
         parser::Node::Replacement { filters: f, field } => {
-            out.push_str(&filters::render_replacement(f, field, ctx, front_side, reveal));
+            out.push_str(&filters::render_replacement(
+                f, field, ctx, front_side, reveal,
+            ));
         }
     }
 }
@@ -355,7 +362,10 @@ mod tests {
     fn furigana_filters() {
         let f = fields(&[("Word", "食べる[たべる] 物[もの]")]);
         let ruby = render(&req("{{furigana:Word}}", "x", &f));
-        assert_eq!(ruby.question, "<ruby>食べる<rt>たべる</rt></ruby> <ruby>物<rt>もの</rt></ruby>");
+        assert_eq!(
+            ruby.question,
+            "<ruby>食べる<rt>たべる</rt></ruby> <ruby>物<rt>もの</rt></ruby>"
+        );
 
         let kana = render(&req("{{kana:Word}}", "x", &f));
         assert_eq!(kana.question, "たべる もの");

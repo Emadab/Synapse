@@ -30,7 +30,11 @@ fn insert_fields_and_templates(
     source_nt_id: i64,
     target_id: i64,
 ) -> CoreResult<()> {
-    for f in model.fields.iter().filter(|f| f.notetype_id == source_nt_id) {
+    for f in model
+        .fields
+        .iter()
+        .filter(|f| f.notetype_id == source_nt_id)
+    {
         tx.execute(
             "INSERT INTO fields (notetype_id, ord, name, config) VALUES (?1, ?2, ?3, ?4)",
             params![target_id, f.ord, f.name, f.config_json],
@@ -204,7 +208,10 @@ pub(crate) fn import(
             .map_err(err)?;
         let rows = stmt
             .query_map([], |r| {
-                Ok((r.get::<_, String>(1)?, (r.get::<_, i64>(0)?, r.get::<_, i64>(2)?)))
+                Ok((
+                    r.get::<_, String>(1)?,
+                    (r.get::<_, i64>(0)?, r.get::<_, i64>(2)?),
+                ))
             })
             .map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)?
@@ -262,7 +269,9 @@ pub(crate) fn import(
 
     // 5. Cards — dedup by (note_id, ord). Pre-load existing ((note_id, ord) -> id).
     let mut existing_cards: HashMap<(i64, i64), i64> = {
-        let mut stmt = tx.prepare("SELECT id, note_id, ord FROM cards").map_err(err)?;
+        let mut stmt = tx
+            .prepare("SELECT id, note_id, ord FROM cards")
+            .map_err(err)?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
@@ -556,8 +565,14 @@ mod tests {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .unwrap();
-        assert_eq!(afmt, "{{FrontSide}}<hr>{{Back}}", "uses the imported template");
-        assert!(css.is_empty(), "uses the imported (empty) CSS, not the stock default");
+        assert_eq!(
+            afmt, "{{FrontSide}}<hr>{{Back}}",
+            "uses the imported template"
+        );
+        assert!(
+            css.is_empty(),
+            "uses the imported (empty) CSS, not the stock default"
+        );
     }
 
     /// Two notes sharing a guid within the *same* import batch: the later one
@@ -597,7 +612,10 @@ mod tests {
         model.revlog = vec![];
 
         let summary = storage.import(&model).unwrap();
-        assert_eq!(summary.notes_added, 1, "second note updates the first's row");
+        assert_eq!(
+            summary.notes_added, 1,
+            "second note updates the first's row"
+        );
         assert_eq!(summary.notes_updated, 1);
 
         let note = storage.note_detail(1).unwrap().unwrap();

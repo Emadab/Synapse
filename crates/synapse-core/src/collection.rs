@@ -250,9 +250,14 @@ impl Collection {
         let mut total = (0u32, 0u32, 0u32);
         for id in self.study_subtree(deck_id)? {
             let (new_limit, review_limit) = self.remaining_limits(id)?;
-            let (n, l, r) = self
-                .storage
-                .count_due_by_type(id, today, now_ms, today_end_ms, new_limit, review_limit)?;
+            let (n, l, r) = self.storage.count_due_by_type(
+                id,
+                today,
+                now_ms,
+                today_end_ms,
+                new_limit,
+                review_limit,
+            )?;
             total.0 += n;
             total.1 += l;
             total.2 += r;
@@ -296,9 +301,14 @@ impl Collection {
         let mut learning_ahead: Vec<i64> = Vec::new();
         for &id in &subtree {
             let (new_limit, review_limit) = self.remaining_limits(id)?;
-            let queue = self
-                .storage
-                .study_queue(id, today, now_ms, today_end_ms, new_limit, review_limit)?;
+            let queue = self.storage.study_queue(
+                id,
+                today,
+                now_ms,
+                today_end_ms,
+                new_limit,
+                review_limit,
+            )?;
             learning.extend(queue.learning);
             new.extend(queue.new);
             review.extend(queue.review);
@@ -336,7 +346,8 @@ impl Collection {
                     let (n2, r2) = all_studied.get(id).copied().unwrap_or((0, 0));
                     (nd + n2, rd + r2)
                 });
-                let take_new = prefer_new(new_done, new.len() as u32, rev_done, review.len() as u32);
+                let take_new =
+                    prefer_new(new_done, new.len() as u32, rev_done, review.len() as u32);
                 Ok(Some(if take_new { n } else { r }))
             }
             (Some(n), None) => Ok(Some(n)),
@@ -568,7 +579,8 @@ impl Collection {
     /// `root` plus every deck nested under it (transitively), via `parent_id`.
     fn deck_and_descendants(&self, root: i64) -> CoreResult<Vec<i64>> {
         let decks = self.storage.list_decks()?;
-        let mut children: std::collections::HashMap<i64, Vec<i64>> = std::collections::HashMap::new();
+        let mut children: std::collections::HashMap<i64, Vec<i64>> =
+            std::collections::HashMap::new();
         for d in &decks {
             if let Some(p) = d.parent_id {
                 children.entry(p).or_default().push(d.id);
@@ -1260,8 +1272,14 @@ mod tests {
             new_limit: u32,
             review_limit: u32,
         ) -> CoreResult<u32> {
-            let (n, l, r) =
-                self.count_due_by_type(deck_id, today, now_ms, today_end_ms, new_limit, review_limit)?;
+            let (n, l, r) = self.count_due_by_type(
+                deck_id,
+                today,
+                now_ms,
+                today_end_ms,
+                new_limit,
+                review_limit,
+            )?;
             Ok(n + l + r)
         }
         fn deck_due_counts(
@@ -1272,7 +1290,10 @@ mod tests {
         ) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
             Ok(self.due_counts.lock().unwrap().clone())
         }
-        fn cards_due_ms(&self, card_ids: &[i64]) -> CoreResult<std::collections::HashMap<i64, i64>> {
+        fn cards_due_ms(
+            &self,
+            card_ids: &[i64],
+        ) -> CoreResult<std::collections::HashMap<i64, i64>> {
             let due = self.due_ms.lock().unwrap();
             Ok(card_ids
                 .iter()
@@ -1727,7 +1748,11 @@ mod tests {
             .map(|(d, counts)| (d.id, counts))
             .collect();
 
-        assert_eq!(by_id[&1], (7, 1, 3), "parent rolls up its own + child's counts");
+        assert_eq!(
+            by_id[&1],
+            (7, 1, 3),
+            "parent rolls up its own + child's counts"
+        );
         assert_eq!(by_id[&2], (5, 1, 3), "child counts are unaffected");
         assert_eq!(
             by_id[&3],
@@ -1826,7 +1851,11 @@ mod tests {
     #[test]
     fn filtered_deck_studies_in_isolation() {
         let storage = FakeStorage::default();
-        storage.decks.lock().unwrap().push(deck(1, "Cram", None, true));
+        storage
+            .decks
+            .lock()
+            .unwrap()
+            .push(deck(1, "Cram", None, true));
         storage.queues.lock().unwrap().insert(
             1,
             crate::ports::StudyQueue {

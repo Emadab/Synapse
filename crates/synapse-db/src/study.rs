@@ -148,7 +148,12 @@ pub fn all_day_extra_new(conn: &Connection, day: i32) -> CoreResult<HashMap<i64,
 }
 
 /// Upsert the extra new-card allowance for `deck_id` on `day`.
-pub fn set_day_extra_new(conn: &Connection, deck_id: i64, day: i32, extra_new: u32) -> CoreResult<()> {
+pub fn set_day_extra_new(
+    conn: &Connection,
+    deck_id: i64,
+    day: i32,
+    extra_new: u32,
+) -> CoreResult<()> {
     conn.execute(
         "INSERT INTO day_limit_overrides (deck_id, day, extra_new) VALUES (?1, ?2, ?3)
          ON CONFLICT(deck_id, day) DO UPDATE SET extra_new = excluded.extra_new",
@@ -613,7 +618,13 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
         .query_row(
             "SELECT qfmt, afmt, name FROM templates WHERE notetype_id = ?1 AND ord = ?2",
             params![row.notetype_id, row.ord],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            },
         )
         .optional()
         .map_err(err)?;
@@ -623,7 +634,13 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
             .query_row(
                 "SELECT qfmt, afmt, name FROM templates WHERE notetype_id = ?1 AND ord = 0",
                 [row.notetype_id],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
+                },
             )
             .optional()
             .map_err(err)?
@@ -642,11 +659,7 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
         .map_err(err)?
         .unwrap_or((0, String::new(), String::new(), String::new()));
 
-    let tags = row
-        .tags
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let tags = row.tags.split_whitespace().collect::<Vec<_>>().join(" ");
     let (deck, subdeck) = match row.deck_name.rsplit_once("::") {
         Some((_, leaf)) => (row.deck_name.clone(), leaf.to_string()),
         None => (row.deck_name.clone(), row.deck_name.clone()),

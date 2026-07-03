@@ -265,11 +265,9 @@ mod tests {
         assert_eq!(count as usize, ALL.len());
 
         let cloze_kind: i64 = conn
-            .query_row(
-                "SELECT kind FROM notetypes WHERE name = 'Cloze'",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT kind FROM notetypes WHERE name = 'Cloze'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(cloze_kind, 1);
     }

@@ -43,11 +43,7 @@ fn deck_clause(alias: &str, deck_ids: Option<&[i64]>) -> String {
         None => "1=1".to_string(),
         Some(ids) if ids.is_empty() => "0=1".to_string(),
         Some(ids) => {
-            let list = ids
-                .iter()
-                .map(i64::to_string)
-                .collect::<Vec<_>>()
-                .join(",");
+            let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
             format!("{alias}.deck_id IN ({list})")
         }
     }
@@ -345,7 +341,12 @@ pub fn stats(
     Ok(stats)
 }
 
-fn deck_stats(conn: &Connection, today: i32, now_ms: i64, created_ms: i64) -> CoreResult<Vec<DeckStat>> {
+fn deck_stats(
+    conn: &Connection,
+    today: i32,
+    now_ms: i64,
+    created_ms: i64,
+) -> CoreResult<Vec<DeckStat>> {
     use std::collections::HashMap;
 
     let mut by_deck: HashMap<i64, DeckStat> = HashMap::new();

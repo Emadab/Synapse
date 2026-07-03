@@ -6,8 +6,15 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Node {
     Text(String),
-    Replacement { filters: Vec<String>, field: String },
-    Section { negate: bool, name: String, body: Vec<Node> },
+    Replacement {
+        filters: Vec<String>,
+        field: String,
+    },
+    Section {
+        negate: bool,
+        name: String,
+        body: Vec<Node>,
+    },
 }
 
 enum Token<'a> {
