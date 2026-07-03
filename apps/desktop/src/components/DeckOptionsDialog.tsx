@@ -24,6 +24,12 @@ function NumField({
   max?: number;
   step?: number;
 }) {
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    setText(String(value));
+  }, [value]);
+
   return (
     <label className="flex items-center justify-between gap-4 py-1">
       <span className="text-sm text-muted-foreground">{label}</span>
@@ -32,8 +38,19 @@ function NumField({
         min={min}
         max={max}
         step={step ?? 1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={text}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setText(raw);
+          if (raw !== "" && !Number.isNaN(Number(raw))) {
+            onChange(Number(raw));
+          }
+        }}
+        onBlur={() => {
+          if (text === "" || Number.isNaN(Number(text))) {
+            setText(String(value));
+          }
+        }}
         className="h-7 w-28 rounded border border-input bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
       />
     </label>
