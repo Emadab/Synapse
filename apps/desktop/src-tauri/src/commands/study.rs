@@ -108,6 +108,13 @@ fn present(collection: &Collection, card: StudyCard, session_deck_id: i64) -> St
         fields: &card.render.fields,
         card_ord: card.render.card_ord,
         is_cloze: card.render.is_cloze,
+        tags: &card.render.tags,
+        deck: &card.render.deck,
+        subdeck: &card.render.subdeck,
+        notetype: &card.render.notetype,
+        card_name: &card.render.card_name,
+        flag: card.render.flag,
+        occlusion_mode: &card.render.occlusion_mode,
     });
 
     let config = collection
@@ -137,6 +144,7 @@ fn present(collection: &Collection, card: StudyCard, session_deck_id: i64) -> St
         deck_id: card.deck_id,
         question: rendered.question,
         answer: rendered.answer,
+        css: card.render.css.clone(),
         again: label(previews.again),
         hard: label(previews.hard),
         good: label(previews.good),

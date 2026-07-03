@@ -13,6 +13,23 @@ pub struct CardRender {
     pub afmt: String,
     pub is_cloze: bool,
     pub card_ord: u16,
+    /// Space-joined note tags.
+    pub tags: String,
+    /// Full deck path (e.g. `Spanish::Verbs`), for `{{Deck}}`.
+    pub deck: String,
+    /// Leaf deck name (e.g. `Verbs`), for `{{Subdeck}}`.
+    pub subdeck: String,
+    /// Notetype name, for `{{Type}}`.
+    pub notetype: String,
+    /// Card template display name, for `{{Card}}`.
+    pub card_name: String,
+    /// 0 = no flag, 1-7 = flag color, for `{{CardFlag}}`.
+    pub flag: u8,
+    /// Notetype's custom card CSS (`Notetype.config_json.css`), applied
+    /// scoped to the card face at study time.
+    pub css: String,
+    /// Image-occlusion notetype's `"hideAllGuessOne"` / `"hideOneGuessOne"` mode.
+    pub occlusion_mode: String,
 }
 
 /// One card queued for study: identity, deck, render inputs, scheduling state.

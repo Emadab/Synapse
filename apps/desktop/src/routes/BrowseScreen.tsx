@@ -686,6 +686,7 @@ function NoteEditorPanel({ noteId, onSaved }: { noteId: number; onSaved: () => v
           <label className="text-sm font-medium">{field.name}</label>
           <FieldEditor
             value={field.value}
+            otherFieldsHtml={fields.filter((_, i) => i !== index).map((f) => f.value)}
             onChange={(html) =>
               setFields((current) =>
                 current.map((f, i) => (i === index ? { ...f, value: html } : f)),

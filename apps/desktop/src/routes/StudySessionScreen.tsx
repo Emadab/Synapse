@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Flag, MinusCircle, Settings, SkipForward, Volume2 } from "lucide-react";
-import renderMathInElement from "katex/contrib/auto-render";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { CardFace } from "@/components/CardFace";
 import { DeckOptionsDialog } from "@/components/DeckOptionsDialog";
 import { DeckCounts } from "@/components/decks/DeckCounts";
 import { ExtendTodayLimit } from "@/components/decks/IncreaseLimitControl";
 import { ipc, isTauri, Rating, type RatingValue } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
-import { mediaUrl, prepareCard } from "@/lib/renderCard";
+import { mediaUrl, type QueueEntry } from "@/lib/renderCard";
 import { dur, ease, listItem, staggerList, useReducedMotion } from "@/lib/motion";
+import { useTheme } from "@/stores/theme";
+import { speak, cancelSpeech } from "@/lib/tts";
 
 const FLAG_COLORS: Record<number, string> = {
   0: "text-muted-foreground",
@@ -22,16 +24,6 @@ const FLAG_COLORS: Record<number, string> = {
   3: "text-green-500",
   4: "text-blue-500",
 };
-
-const KATEX_OPTIONS = {
-  delimiters: [
-    { left: "\\(", right: "\\)", display: false },
-    { left: "\\[", right: "\\]", display: true },
-    { left: "$$", right: "$$", display: true },
-    { left: "$", right: "$", display: false },
-  ],
-  throwOnError: false,
-} as const;
 
 export function StudySessionScreen() {
   const { deckId } = useParams({ from: "/study/$deckId" });
@@ -97,66 +89,57 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
   const card = cardQuery.data ?? null;
   const actionBusy = suspendMut.isPending || buryMut.isPending || flagMut.isPending;
 
-  const prepared = useMemo(
-    () =>
-      card
-        ? {
-            q: prepareCard(card.question, tauri),
-            a: prepareCard(card.answer, tauri),
-          }
-        : null,
-    [card, tauri],
-  );
+  const night = useTheme((s) => s.resolved === "dark");
+  const [frontQueue, setFrontQueue] = useState<QueueEntry[]>([]);
+  const [backQueue, setBackQueue] = useState<QueueEntry[]>([]);
+  const [typedAnswer, setTypedAnswer] = useState("");
+  const currentQueue = revealed ? backQueue : frontQueue;
 
-  const currentSounds = useMemo(
-    () => (prepared ? (revealed ? prepared.a.sounds : prepared.q.sounds) : []),
-    [prepared, revealed],
-  );
-
-  // Audio sequencer
-  const [soundIdx, setSoundIdx] = useState(-1);
+  // Sound + TTS sequencer — plays [sound:...] files and {{tts:}} utterances
+  // in the document order the render engine's unified queue reports.
+  const [queueIdx, setQueueIdx] = useState(-1);
   const cardKey = card?.card_id ?? -1;
 
   useEffect(() => {
-    setSoundIdx(currentSounds.length > 0 ? 0 : -1);
+    setTypedAnswer("");
+  }, [cardKey]);
+
+  useEffect(() => {
+    setQueueIdx(currentQueue.length > 0 ? 0 : -1);
   }, [cardKey, revealed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replayAudio = useCallback(() => {
-    if (currentSounds.length > 0) setSoundIdx(0);
-  }, [currentSounds.length]);
+    if (currentQueue.length > 0) setQueueIdx(0);
+  }, [currentQueue.length]);
 
   useEffect(() => {
-    if (!tauri || soundIdx < 0 || soundIdx >= currentSounds.length) return;
-    const audio = new Audio(mediaUrl(currentSounds[soundIdx]));
-    audio.play().catch(() => {});
-    audio.onended = () => setSoundIdx((i) => i + 1);
-    return () => {
-      audio.pause();
-      audio.src = "";
-    };
-  }, [tauri, soundIdx, currentSounds]);
+    if (queueIdx < 0 || queueIdx >= currentQueue.length) return;
+    const entry = currentQueue[queueIdx];
+    const advance = () => setQueueIdx((i) => i + 1);
 
-  // KaTeX: run on both flip faces when the card changes.
-  const cardFrontRef = useRef<HTMLDivElement>(null);
-  const cardBackRef = useRef<HTMLDivElement>(null);
-  // Fallback ref for reduced-motion path.
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (prefersReduced) {
-      if (cardRef.current) renderMathInElement(cardRef.current, KATEX_OPTIONS);
-    } else {
-      if (cardFrontRef.current) renderMathInElement(cardFrontRef.current, KATEX_OPTIONS);
-      if (cardBackRef.current) renderMathInElement(cardBackRef.current, KATEX_OPTIONS);
+    if (entry.kind === "file") {
+      if (!tauri) {
+        advance();
+        return;
+      }
+      const audio = new Audio(mediaUrl(entry.name));
+      audio.play().catch(() => {});
+      audio.onended = advance;
+      return () => {
+        audio.pause();
+        audio.src = "";
+      };
     }
-  }, [card?.card_id, prefersReduced]);
 
-  // Also re-run KaTeX on reduced-motion path when revealed (html changes).
-  const currentHtml = prepared ? (revealed ? prepared.a.html : prepared.q.html) : "";
-  useEffect(() => {
-    if (!prefersReduced || !cardRef.current) return;
-    renderMathInElement(cardRef.current, KATEX_OPTIONS);
-  }, [currentHtml, prefersReduced]);
+    let cancelled = false;
+    void speak(entry.text, { lang: entry.lang, voices: entry.voices, rate: entry.rate }).then(() => {
+      if (!cancelled) advance();
+    });
+    return () => {
+      cancelled = true;
+      cancelSpeech();
+    };
+  }, [tauri, queueIdx, currentQueue]);
 
   // Close flag menu on outside click.
   useEffect(() => {
@@ -234,11 +217,16 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
         >
           {/* Card — 3D flip (or plain div for reduced-motion) */}
           {prefersReduced ? (
-            <div
-              ref={cardRef}
-              key={card.card_id + (revealed ? "a" : "q")}
-              className="synapse-card flex-1 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto"
-              dangerouslySetInnerHTML={{ __html: currentHtml }}
+            <CardFace
+              key={card.card_id}
+              html={revealed ? card.answer : card.question}
+              css={card.css}
+              tauri={tauri}
+              night={night}
+              className="synapse-card flex-1 rounded-xl border border-border bg-card p-8 overflow-auto"
+              onQueue={revealed ? setBackQueue : setFrontQueue}
+              onTypedInput={!revealed ? setTypedAnswer : undefined}
+              typedAnswer={revealed ? typedAnswer : undefined}
             />
           ) : (
             <div className="synapse-flip relative flex-1">
@@ -249,18 +237,26 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                 transition={{ duration: flipDuration, ease }}
               >
                 {/* Front — question */}
-                <div
-                  ref={cardFrontRef}
-                  className="synapse-card absolute inset-0 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto"
+                <CardFace
+                  html={card.question}
+                  css={card.css}
+                  tauri={tauri}
+                  night={night}
+                  className="synapse-card absolute inset-0 rounded-xl border border-border bg-card p-8 overflow-auto"
                   style={{ backfaceVisibility: "hidden" }}
-                  dangerouslySetInnerHTML={{ __html: prepared?.q.html ?? "" }}
+                  onQueue={setFrontQueue}
+                  onTypedInput={setTypedAnswer}
                 />
                 {/* Back — answer (pre-rotated so it faces forward when parent is at 180°) */}
-                <div
-                  ref={cardBackRef}
-                  className="synapse-card absolute inset-0 rounded-xl border border-border bg-card p-8 text-card-foreground overflow-auto"
+                <CardFace
+                  html={card.answer}
+                  css={card.css}
+                  tauri={tauri}
+                  night={night}
+                  className="synapse-card absolute inset-0 rounded-xl border border-border bg-card p-8 overflow-auto"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
-                  dangerouslySetInnerHTML={{ __html: prepared?.a.html ?? "" }}
+                  onQueue={setBackQueue}
+                  typedAnswer={typedAnswer}
                 />
               </motion.div>
             </div>
@@ -308,7 +304,7 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
 
             {/* Card actions: audio / suspend / bury / flag */}
             <div className="mt-3 flex items-center justify-end gap-1">
-              {currentSounds.length > 0 && (
+              {currentQueue.length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"

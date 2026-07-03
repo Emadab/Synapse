@@ -22,6 +22,35 @@ fn err(e: impl std::fmt::Display) -> CoreError {
     CoreError::Storage(e.to_string())
 }
 
+/// Insert every field/template belonging to `source_nt_id` in `model` under
+/// `target_id` in the database.
+fn insert_fields_and_templates(
+    tx: &Transaction<'_>,
+    model: &CanonicalModel,
+    source_nt_id: i64,
+    target_id: i64,
+) -> CoreResult<()> {
+    for f in model.fields.iter().filter(|f| f.notetype_id == source_nt_id) {
+        tx.execute(
+            "INSERT INTO fields (notetype_id, ord, name, config) VALUES (?1, ?2, ?3, ?4)",
+            params![target_id, f.ord, f.name, f.config_json],
+        )
+        .map_err(err)?;
+    }
+    for t in model
+        .templates
+        .iter()
+        .filter(|t| t.notetype_id == source_nt_id)
+    {
+        tx.execute(
+            "INSERT INTO templates (notetype_id, ord, name, qfmt, afmt, config) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![target_id, t.ord, t.name, t.qfmt, t.afmt, t.config_json],
+        )
+        .map_err(err)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn import(
     tx: &Transaction<'_>,
     model: &CanonicalModel,
@@ -108,6 +137,11 @@ pub(crate) fn import(
     }
 
     // 3. Note types — get-or-create by name; new ones get their fields/templates.
+    // A same-named notetype that already exists but has zero notes against it
+    // (e.g. an unused stock notetype seeded on collection creation) is treated
+    // as a placeholder and its shape/CSS is replaced by the imported one,
+    // rather than silently keeping the stock templates. Once a notetype has
+    // real notes, re-importing the same deck stays idempotent and reuses it.
     let mut nt_map: HashMap<i64, i64> = HashMap::new();
     for nt in &model.notetypes {
         let existing: Option<i64> = tx
@@ -118,7 +152,34 @@ pub(crate) fn import(
             )
             .optional()
             .map_err(err)?;
-        let target = match existing {
+        let existing_unused = match existing {
+            Some(id) => {
+                let note_count: i64 = tx
+                    .query_row(
+                        "SELECT COUNT(*) FROM notes WHERE notetype_id = ?1",
+                        [id],
+                        |r| r.get(0),
+                    )
+                    .map_err(err)?;
+                (note_count == 0).then_some(id)
+            }
+            None => None,
+        };
+
+        let target = match existing_unused.or(existing) {
+            Some(id) if existing_unused == Some(id) => {
+                tx.execute(
+                    r#"UPDATE notetypes SET kind = ?2, "mod" = ?3, usn = ?4, config = ?5 WHERE id = ?1"#,
+                    params![id, nt.kind, nt.mod_ms, nt.usn, nt.config_json],
+                )
+                .map_err(err)?;
+                tx.execute("DELETE FROM fields WHERE notetype_id = ?1", [id])
+                    .map_err(err)?;
+                tx.execute("DELETE FROM templates WHERE notetype_id = ?1", [id])
+                    .map_err(err)?;
+                insert_fields_and_templates(tx, model, nt.id, id)?;
+                id
+            }
             Some(id) => id,
             None => {
                 tx.execute(
@@ -128,20 +189,7 @@ pub(crate) fn import(
                 .map_err(err)?;
                 summary.notetypes_added += 1;
                 let id = tx.last_insert_rowid();
-                for f in model.fields.iter().filter(|f| f.notetype_id == nt.id) {
-                    tx.execute(
-                        "INSERT INTO fields (notetype_id, ord, name, config) VALUES (?1, ?2, ?3, ?4)",
-                        params![id, f.ord, f.name, f.config_json],
-                    )
-                    .map_err(err)?;
-                }
-                for t in model.templates.iter().filter(|t| t.notetype_id == nt.id) {
-                    tx.execute(
-                        "INSERT INTO templates (notetype_id, ord, name, qfmt, afmt, config) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                        params![id, t.ord, t.name, t.qfmt, t.afmt, t.config_json],
-                    )
-                    .map_err(err)?;
-                }
+                insert_fields_and_templates(tx, model, nt.id, id)?;
                 id
             }
         };
@@ -465,6 +513,51 @@ mod tests {
         assert_eq!(second.revlog_added, 0);
         assert_eq!(second.decks_added, 0);
         assert_eq!(second.notes_updated, 1);
+    }
+
+    /// A freshly created collection auto-seeds stock note types (including a
+    /// "Basic" placeholder with no notes yet). Importing a package that also
+    /// defines "Basic" must replace that unused placeholder's fields,
+    /// templates and CSS with the imported ones — not silently keep the
+    /// stock shape, which would make imported decks render with the wrong
+    /// templates.
+    #[test]
+    fn import_overwrites_unused_stock_notetype_of_same_name() {
+        let storage = SqliteStorage::open_in_memory().unwrap();
+        storage.ensure_collection(1_000).unwrap();
+
+        let stock_id: i64 = storage
+            .lock()
+            .query_row("SELECT id FROM notetypes WHERE name = 'Basic'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let stock_afmt: String = storage
+            .lock()
+            .query_row(
+                "SELECT afmt FROM templates WHERE notetype_id = ?1",
+                [stock_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(stock_afmt.contains("hr id"), "stock Basic seeded first");
+
+        let model = sample_model();
+        let summary = storage.import(&model).unwrap();
+        assert_eq!(summary.notes_added, 1);
+
+        let (afmt, css): (String, String) = storage
+            .lock()
+            .query_row(
+                "SELECT t.afmt, coalesce(json_extract(n.config, '$.css'), '')
+                 FROM templates t JOIN notetypes n ON n.id = t.notetype_id
+                 WHERE n.name = 'Basic'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(afmt, "{{FrontSide}}<hr>{{Back}}", "uses the imported template");
+        assert!(css.is_empty(), "uses the imported (empty) CSS, not the stock default");
     }
 
     /// Two notes sharing a guid within the *same* import batch: the later one

@@ -165,6 +165,8 @@ pub struct StudyCardDto {
     pub card_phase: String,
     /// Deck's active scheduling algorithm.
     pub algorithm: Algorithm,
+    /// The notetype's custom card CSS, applied scoped to the card face.
+    pub css: String,
 }
 
 /// A single note field (name + HTML value), in note order.
@@ -255,6 +257,8 @@ pub struct NotetypeDetail {
     pub kind: i64,
     pub fields: Vec<FieldSummary>,
     pub templates: Vec<TemplateSummary>,
+    /// Custom card CSS (`Notetype.config_json.css`), user-editable.
+    pub css: String,
 }
 
 /// Rendered question + answer HTML for the template preview pane.

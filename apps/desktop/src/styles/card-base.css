@@ -1,0 +1,139 @@
+/**
+ * App-owned base styles for card content, adopted into every CardFace shadow
+ * root ahead of the per-notetype stylesheet. Anki's stock `.card`/`.night_mode`
+ * class names are honored so imported decks keep working. Keep this reset-level
+ * only — visual identity (fonts, spacing, cloze color) lives in the per-notetype
+ * DEFAULT_CARD_CSS so it stays user-editable.
+ */
+
+:host {
+  display: block;
+}
+
+.card {
+  box-sizing: border-box;
+  color: hsl(var(--card-foreground));
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.card * {
+  box-sizing: border-box;
+}
+
+.card img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.5rem auto;
+  border-radius: 0.5rem;
+}
+
+.card hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.card .cloze {
+  font-weight: 600;
+  color: hsl(var(--primary));
+}
+
+.card .synapse-type-input {
+  margin-top: 0.5rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(var(--input));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.card .synapse-type-input:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}
+
+.card .synapse-typeans-diff {
+  display: block;
+  margin-top: 0.5rem;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.card .typeGood {
+  color: #2fa84f;
+}
+
+.card .typeBad {
+  color: hsl(var(--destructive));
+  text-decoration: line-through;
+}
+
+.card .typeMissed {
+  color: hsl(var(--destructive));
+}
+
+.card .synapse-hint {
+  display: inline-block;
+  cursor: pointer;
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  font-size: 0.9em;
+}
+
+.card .synapse-hint-body {
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.card .synapse-io-shape {
+  position: absolute;
+  left: calc(var(--io-left, 0) * 100%);
+  top: calc(var(--io-top, 0) * 100%);
+  width: calc(var(--io-width, 0) * 100%);
+  height: calc(var(--io-height, 0) * 100%);
+  background: hsl(var(--primary) / 0.85);
+  border: 1px solid hsl(var(--primary));
+}
+
+.card .synapse-io-shape[data-revealed="true"] {
+  background: transparent;
+  border-color: hsl(var(--primary) / 0.6);
+}
+
+.card .synapse-io-shape[data-revealed="false"]:hover {
+  background: hsl(var(--primary) / 0.65);
+}
+
+.card .synapse-io-shape[data-active="true"][data-revealed="true"] {
+  border-width: 2px;
+  border-color: hsl(var(--primary));
+}
+
+.card .synapse-io-ellipse {
+  border-radius: 50%;
+}
+
+.card .synapse-tts {
+  display: none;
+}
+
+.card .synapse-tts-voices {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.85em;
+  color: hsl(var(--muted-foreground));
+}
+
+/* Anki stock decks frequently target `.night_mode`/`.nightMode` directly. */
+.card.night_mode,
+.card.nightMode {
+  color: hsl(var(--card-foreground));
+}

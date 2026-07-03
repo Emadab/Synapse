@@ -123,24 +123,10 @@
   }
 }
 
-/* Rendered card content (HTML from note templates). */
+/* Card content itself renders inside CardFace's shadow root (see
+   src/styles/card-base.css + per-notetype CSS) — .synapse-card here is just
+   the light-DOM host panel (border/padding/background). */
 @layer components {
-  .synapse-card {
-    @apply text-base leading-relaxed;
-  }
-  .synapse-card img {
-    @apply mx-auto my-2 max-w-full rounded-md;
-  }
-  .synapse-card hr {
-    @apply my-4 border-border;
-  }
-  .synapse-card .cloze {
-    @apply font-semibold text-primary underline decoration-dotted;
-  }
-  .synapse-type-input {
-    @apply mt-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring;
-  }
-
   .synapse-flip {
     perspective: 1200px;
   }

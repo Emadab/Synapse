@@ -58,6 +58,12 @@ export const ipc = {
   // Import
   importPackage: (path: string) => invoke<ImportSummary>("import_package", { path }),
 
+  // Media (editor image/audio insert)
+  saveMedia: (bytes: Uint8Array, filename: string) =>
+    invoke<string>("save_media", { bytes: Array.from(bytes), filename }),
+  saveMediaFromPath: (sourcePath: string) =>
+    invoke<string>("save_media_from_path", { sourcePath }),
+
   // Study
   getNextCard: (deckId: number) => invoke<StudyCardDto | null>("get_next_card", { deckId }),
   answerCard: (cardId: number, rating: RatingValue, deckId: number) =>
@@ -75,6 +81,8 @@ export const ipc = {
     invoke<NotetypeDetail | null>("get_notetype", { notetypeId }),
   createNotetype: (name: string, kind: number) =>
     invoke<NotetypeDetail>("create_notetype", { name, kind }),
+  listStockNotetypes: () => invoke<string[]>("list_stock_notetypes"),
+  addStockNotetype: (index: number) => invoke<NotetypeDetail>("add_stock_notetype", { index }),
   deleteNotetype: (notetypeId: number) => invoke<void>("delete_notetype", { notetypeId }),
   renameNotetype: (notetypeId: number, name: string) =>
     invoke<void>("rename_notetype", { notetypeId, name }),
@@ -93,6 +101,8 @@ export const ipc = {
     invoke<void>("remove_template", { notetypeId, ord }),
   saveTemplate: (notetypeId: number, ord: number, name: string, qfmt: string, afmt: string) =>
     invoke<void>("save_template", { notetypeId, ord, name, qfmt, afmt }),
+  saveNotetypeCss: (notetypeId: number, css: string) =>
+    invoke<void>("save_notetype_css", { notetypeId, css }),
   previewTemplate: (notetypeId: number, templateOrd: number, sampleFields: string[]) =>
     invoke<RenderedPreview>("preview_template", { notetypeId, templateOrd, sampleFields }),
 

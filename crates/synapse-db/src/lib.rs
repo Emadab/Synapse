@@ -16,6 +16,7 @@ pub mod notetype;
 pub mod schema;
 pub mod search;
 pub mod stats;
+pub mod stock;
 pub mod storage;
 pub mod study;
 pub mod tags;

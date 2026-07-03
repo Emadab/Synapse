@@ -315,11 +315,22 @@ pub trait Storage: Send + Sync {
     /// Create a new note type seeded with default fields/template. Returns the new id.
     fn create_notetype(&self, name: &str, kind: i64, now_ms: i64) -> CoreResult<i64>;
 
+    /// Names of the built-in stock note types (Basic, Cloze, …), in a stable
+    /// order matching `add_stock_notetype`'s index.
+    fn stock_notetype_names(&self) -> Vec<&'static str>;
+
+    /// Add one built-in stock note type (by index into `stock_notetype_names`)
+    /// to the collection. Returns the new id.
+    fn add_stock_notetype(&self, index: usize, now_ms: i64) -> CoreResult<i64>;
+
     /// Delete a note type. Fails with `Invalid` if any notes reference it.
     fn delete_notetype(&self, notetype_id: i64, now_ms: i64) -> CoreResult<()>;
 
     /// Rename a note type.
     fn rename_notetype(&self, notetype_id: i64, name: &str, now_ms: i64) -> CoreResult<()>;
+
+    /// Save a note type's custom card CSS.
+    fn save_notetype_css(&self, notetype_id: i64, css: &str, now_ms: i64) -> CoreResult<()>;
 
     /// Add a field at the end of `notetype_id`; appends an empty value to every
     /// existing note of that type.

@@ -556,8 +556,11 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
         .query_row(
             "SELECT c.note_id, c.deck_id, c.ord, c.type, c.interval, c.ease_factor, c.reps,
                     c.lapses, c.remaining, c.fsrs_stability, c.fsrs_difficulty,
-                    c.fsrs_last_review, n.fields, n.notetype_id
-             FROM cards c JOIN notes n ON n.id = c.note_id
+                    c.fsrs_last_review, n.fields, n.notetype_id, n.tags, c.flags,
+                    d.name
+             FROM cards c
+             JOIN notes n ON n.id = c.note_id
+             JOIN decks d ON d.id = c.deck_id
              WHERE c.id = ?1",
             [card_id],
             |r| {
@@ -577,6 +580,9 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
                         last_review: r.get(11)?,
                         fields: r.get(12)?,
                         notetype_id: r.get(13)?,
+                        tags: r.get(14)?,
+                        flags: r.get(15)?,
+                        deck_name: r.get(16)?,
                     },
                 ))
             },
@@ -605,34 +611,46 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
     // have a single template shared by every cloze card).
     let template = conn
         .query_row(
-            "SELECT qfmt, afmt FROM templates WHERE notetype_id = ?1 AND ord = ?2",
+            "SELECT qfmt, afmt, name FROM templates WHERE notetype_id = ?1 AND ord = ?2",
             params![row.notetype_id, row.ord],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
         )
         .optional()
         .map_err(err)?;
-    let (qfmt, afmt) = match template {
+    let (qfmt, afmt, template_name) = match template {
         Some(t) => t,
         None => conn
             .query_row(
-                "SELECT qfmt, afmt FROM templates WHERE notetype_id = ?1 AND ord = 0",
+                "SELECT qfmt, afmt, name FROM templates WHERE notetype_id = ?1 AND ord = 0",
                 [row.notetype_id],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
             )
             .optional()
             .map_err(err)?
             .unwrap_or_default(),
     };
 
-    let is_cloze: i64 = conn
+    let (is_cloze, notetype_name, css, occlusion_mode): (i64, String, String, String) = conn
         .query_row(
-            "SELECT kind FROM notetypes WHERE id = ?1",
+            "SELECT kind, name, coalesce(json_extract(config, '$.css'), ''),
+                    coalesce(json_extract(config, '$.occlusionMode'), '')
+             FROM notetypes WHERE id = ?1",
             [row.notetype_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .optional()
         .map_err(err)?
-        .unwrap_or(0);
+        .unwrap_or((0, String::new(), String::new(), String::new()));
+
+    let tags = row
+        .tags
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let (deck, subdeck) = match row.deck_name.rsplit_once("::") {
+        Some((_, leaf)) => (row.deck_name.clone(), leaf.to_string()),
+        None => (row.deck_name.clone(), row.deck_name.clone()),
+    };
 
     Ok(Some(StudyCard {
         id: card_id,
@@ -644,6 +662,14 @@ pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCar
             afmt,
             is_cloze: is_cloze == 1,
             card_ord: row.ord.max(0) as u16,
+            tags,
+            deck,
+            subdeck,
+            notetype: notetype_name,
+            card_name: template_name,
+            flag: row.flags.clamp(0, 7) as u8,
+            css,
+            occlusion_mode,
         },
         state: CardState {
             phase: type_to_phase(row.card_type),
@@ -728,6 +754,9 @@ struct CardRow {
     last_review: Option<i64>,
     fields: String,
     notetype_id: i64,
+    tags: String,
+    flags: i64,
+    deck_name: String,
 }
 
 #[cfg(test)]
@@ -846,6 +875,14 @@ mod tests {
                 afmt: "{{Back}}".into(),
                 is_cloze: false,
                 card_ord: 0,
+                tags: "".into(),
+                deck: "Default".into(),
+                subdeck: "Default".into(),
+                notetype: "Basic".into(),
+                card_name: "Card 1".into(),
+                flag: 0,
+                css: "".into(),
+                occlusion_mode: "".into(),
             }
         );
 

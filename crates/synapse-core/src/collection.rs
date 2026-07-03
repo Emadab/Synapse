@@ -979,6 +979,27 @@ impl Collection {
         Ok(())
     }
 
+    pub fn stock_notetype_names(&self) -> Vec<&'static str> {
+        self.storage.stock_notetype_names()
+    }
+
+    pub fn add_stock_notetype(&self, index: usize) -> CoreResult<NotetypeDetail> {
+        let id = self
+            .storage
+            .add_stock_notetype(index, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        self.storage
+            .get_notetype_detail(id)?
+            .ok_or_else(|| CoreError::NotFound(format!("notetype {id}")))
+    }
+
+    pub fn save_notetype_css(&self, notetype_id: i64, css: &str) -> CoreResult<()> {
+        self.storage
+            .save_notetype_css(notetype_id, css, self.clock.now_ms())?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
     pub fn add_field(&self, notetype_id: i64, name: &str) -> CoreResult<()> {
         let name = name.trim();
         if name.is_empty() {
@@ -1383,10 +1404,19 @@ mod tests {
         fn create_notetype(&self, _name: &str, _kind: i64, _now_ms: i64) -> CoreResult<i64> {
             Ok(1)
         }
+        fn stock_notetype_names(&self) -> Vec<&'static str> {
+            vec![]
+        }
+        fn add_stock_notetype(&self, _index: usize, _now_ms: i64) -> CoreResult<i64> {
+            Ok(1)
+        }
         fn delete_notetype(&self, _notetype_id: i64, _now_ms: i64) -> CoreResult<()> {
             Ok(())
         }
         fn rename_notetype(&self, _notetype_id: i64, _name: &str, _now_ms: i64) -> CoreResult<()> {
+            Ok(())
+        }
+        fn save_notetype_css(&self, _notetype_id: i64, _css: &str, _now_ms: i64) -> CoreResult<()> {
             Ok(())
         }
         fn add_field(&self, _notetype_id: i64, _name: &str, _now_ms: i64) -> CoreResult<()> {

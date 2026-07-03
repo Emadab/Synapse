@@ -462,7 +462,12 @@ impl Storage for SqliteStorage {
     }
 
     fn ensure_collection(&self, now_ms: i64) -> CoreResult<i64> {
-        study::ensure_collection(&self.lock(), now_ms)
+        let created = study::ensure_collection(&self.lock(), now_ms)?;
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(storage_err)?;
+        crate::stock::seed_if_empty(&tx, now_ms)?;
+        tx.commit().map_err(storage_err)?;
+        Ok(created)
     }
 
     fn study_queue(
@@ -717,6 +722,19 @@ impl Storage for SqliteStorage {
 
     fn rename_notetype(&self, notetype_id: i64, name: &str, now_ms: i64) -> CoreResult<()> {
         notetype::rename_notetype(&self.lock(), notetype_id, name, now_ms)
+    }
+
+    fn stock_notetype_names(&self) -> Vec<&'static str> {
+        crate::stock::stock_names()
+    }
+
+    fn add_stock_notetype(&self, index: usize, now_ms: i64) -> CoreResult<i64> {
+        let id = crate::stock::add_stock(&self.lock(), index, now_ms)?;
+        Ok(id)
+    }
+
+    fn save_notetype_css(&self, notetype_id: i64, css: &str, now_ms: i64) -> CoreResult<()> {
+        notetype::save_notetype_css(&self.lock(), notetype_id, css, now_ms)
     }
 
     fn add_field(&self, notetype_id: i64, name: &str, now_ms: i64) -> CoreResult<()> {

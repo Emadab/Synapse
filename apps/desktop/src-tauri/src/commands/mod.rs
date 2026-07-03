@@ -9,6 +9,7 @@ pub mod deck;
 pub mod export;
 pub mod import;
 pub mod maintenance;
+pub mod media;
 pub mod notetype;
 pub mod optimize;
 pub mod plugins;

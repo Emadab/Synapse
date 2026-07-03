@@ -25,19 +25,20 @@ pub fn get_notetype_detail(
 ) -> CoreResult<Option<NotetypeDetail>> {
     let row = conn
         .query_row(
-            "SELECT id, name, kind FROM notetypes WHERE id = ?1",
+            "SELECT id, name, kind, coalesce(json_extract(config, '$.css'), '') FROM notetypes WHERE id = ?1",
             [notetype_id],
             |r| {
                 Ok((
                     r.get::<_, i64>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, i64>(2)?,
+                    r.get::<_, String>(3)?,
                 ))
             },
         )
         .optional()
         .map_err(err)?;
-    let Some((id, name, kind)) = row else {
+    let Some((id, name, kind, css)) = row else {
         return Ok(None);
     };
 
@@ -80,7 +81,26 @@ pub fn get_notetype_detail(
         kind,
         fields,
         templates,
+        css,
     }))
+}
+
+/// Save a notetype's custom card CSS, preserving other keys in `config`.
+pub fn save_notetype_css(
+    conn: &Connection,
+    notetype_id: i64,
+    css: &str,
+    now_ms: i64,
+) -> CoreResult<()> {
+    conn.execute(
+        r#"UPDATE notetypes
+           SET config = json_set(config, '$.css', ?2), "mod" = ?3, usn = -1
+           WHERE id = ?1"#,
+        params![notetype_id, css, now_ms],
+    )
+    .map_err(err)?;
+    bump_schema_mod(conn, now_ms)?;
+    Ok(())
 }
 
 pub fn create_notetype(
@@ -89,9 +109,11 @@ pub fn create_notetype(
     kind: i64,
     now_ms: i64,
 ) -> CoreResult<i64> {
+    let css_escaped = serde_json::to_string(crate::stock::DEFAULT_CARD_CSS).map_err(err)?;
+    let config = format!("{{\"css\":{css_escaped}}}");
     tx.execute(
-        r#"INSERT INTO notetypes (name, kind, "mod", usn, config) VALUES (?1, ?2, ?3, -1, '{}')"#,
-        params![name, kind, now_ms],
+        r#"INSERT INTO notetypes (name, kind, "mod", usn, config) VALUES (?1, ?2, ?3, -1, ?4)"#,
+        params![name, kind, now_ms, config],
     )
     .map_err(err)?;
     let id = tx.last_insert_rowid();

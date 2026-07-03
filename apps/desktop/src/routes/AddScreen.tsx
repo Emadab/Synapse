@@ -5,6 +5,7 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { FieldEditor } from "@/components/FieldEditor";
+import { OcclusionEditor } from "@/components/occlusion/OcclusionEditor";
 import { ipc, isTauri } from "@/lib/ipc";
 
 export function AddScreen() {
@@ -48,6 +49,17 @@ export function AddScreen() {
     setFields(nt ? nt.field_names.map(() => "") : []);
     setLastResult(null);
   };
+
+  const setField = (index: number, html: string) =>
+    setFields((current) => {
+      const next = [...current];
+      next[index] = html;
+      return next;
+    });
+
+  const isImageOcclusion = selectedNotetype?.name === "Image Occlusion";
+  const imageFieldIdx = selectedNotetype?.field_names.indexOf("Image") ?? -1;
+  const occlusionFieldIdx = selectedNotetype?.field_names.indexOf("Occlusion") ?? -1;
 
   const add = useMutation({
     mutationFn: () => {
@@ -118,22 +130,37 @@ export function AddScreen() {
           </div>
         </div>
 
+        {/* Image Occlusion notetype: draw-on-image editor for its Image + Occlusion fields. */}
+        {selectedNotetype?.name === "Image Occlusion" &&
+          imageFieldIdx >= 0 &&
+          occlusionFieldIdx >= 0 && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Occlusion</label>
+              <OcclusionEditor
+                imageHtml={fields[imageFieldIdx] ?? ""}
+                onImageHtmlChange={(html) => setField(imageFieldIdx, html)}
+                occlusionHtml={fields[occlusionFieldIdx] ?? ""}
+                onOcclusionHtmlChange={(html) => setField(occlusionFieldIdx, html)}
+              />
+            </div>
+          )}
+
         {/* Dynamic fields */}
-        {(selectedNotetype?.field_names ?? []).map((name: string, index: number) => (
-          <div key={`${notetypeId}:${name}`} className="space-y-1.5">
-            <label className="text-sm font-medium">{name}</label>
-            <FieldEditor
-              value={fields[index] ?? ""}
-              onChange={(html) =>
-                setFields((current) => {
-                  const next = [...current];
-                  next[index] = html;
-                  return next;
-                })
-              }
-            />
-          </div>
-        ))}
+        {(selectedNotetype?.field_names ?? []).map((name: string, index: number) => {
+          if (isImageOcclusion && (index === imageFieldIdx || index === occlusionFieldIdx)) {
+            return null;
+          }
+          return (
+            <div key={`${notetypeId}:${name}`} className="space-y-1.5">
+              <label className="text-sm font-medium">{name}</label>
+              <FieldEditor
+                value={fields[index] ?? ""}
+                otherFieldsHtml={fields.filter((_, i) => i !== index)}
+                onChange={(html) => setField(index, html)}
+              />
+            </div>
+          );
+        })}
 
         {/* Tags */}
         <div className="space-y-1.5">

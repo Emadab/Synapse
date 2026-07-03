@@ -25,4 +25,8 @@ card_phase: string,
 /**
  * Deck's active scheduling algorithm.
  */
-algorithm: Algorithm, };
+algorithm: Algorithm, 
+/**
+ * The notetype's custom card CSS, applied scoped to the card face.
+ */
+css: string, };
