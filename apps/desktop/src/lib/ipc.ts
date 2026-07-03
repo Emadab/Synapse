@@ -55,8 +55,8 @@ export const ipc = {
 
   // Study
   getNextCard: (deckId: number) => invoke<StudyCardDto | null>("get_next_card", { deckId }),
-  answerCard: (cardId: number, rating: RatingValue) =>
-    invoke<StudyCardDto | null>("answer_card", { cardId, rating }),
+  answerCard: (cardId: number, rating: RatingValue, deckId: number) =>
+    invoke<StudyCardDto | null>("answer_card", { cardId, rating, deckId }),
 
   // Note types (summary list — used by Add Note picker)
   listNotetypes: () => invoke<NotetypeSummary[]>("list_notetypes"),

@@ -3,7 +3,6 @@ import { Link, Outlet, useMatchRoute } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
-  BookOpen,
   BookType,
   ChevronLeft,
   ChevronRight,
@@ -24,14 +23,19 @@ import { useTheme } from "@/stores/theme";
 import { TitleBar } from "@/components/TitleBar";
 import { ease } from "@/lib/motion";
 
-const nav = [
-  { to: "/", label: "Decks", icon: Layers, exact: true },
-  { to: "/study", label: "Study", icon: BookOpen, exact: false },
+const nav: {
+  to: string;
+  label: string;
+  icon: React.ElementType;
+  exact: boolean;
+  alsoMatch?: string;
+}[] = [
+  { to: "/", label: "Decks", icon: Layers, exact: true, alsoMatch: "/study/$deckId" },
   { to: "/browse", label: "Browse", icon: Search, exact: false },
   { to: "/add", label: "Add", icon: PlusCircle, exact: false },
   { to: "/notetypes", label: "Note Types", icon: BookType, exact: false },
   { to: "/stats", label: "Stats", icon: BarChart3, exact: false },
-] as const;
+];
 
 type SidebarMode = "docked" | "hover";
 
@@ -53,15 +57,18 @@ function NavLink({
   icon: Icon,
   exact,
   compact,
+  alsoMatch,
 }: {
   to: string;
   label: string;
   icon: React.ElementType;
   exact: boolean;
   compact: boolean;
+  alsoMatch?: string;
 }) {
   const matchRoute = useMatchRoute();
-  const isActive = !!matchRoute({ to, fuzzy: !exact });
+  const isActive =
+    !!matchRoute({ to, fuzzy: !exact }) || (!!alsoMatch && !!matchRoute({ to: alsoMatch, fuzzy: true }));
 
   return (
     <Link
@@ -138,8 +145,16 @@ function SidebarContent({
 
       {/* Nav items */}
       <nav aria-label="Main navigation" className="flex-1 space-y-0.5 px-2 py-2">
-        {nav.map(({ to, label, icon, exact }) => (
-          <NavLink key={to} to={to} label={label} icon={icon} exact={exact} compact={compact} />
+        {nav.map(({ to, label, icon, exact, alsoMatch }) => (
+          <NavLink
+            key={to}
+            to={to}
+            label={label}
+            icon={icon}
+            exact={exact}
+            compact={compact}
+            alsoMatch={alsoMatch}
+          />
         ))}
       </nav>
 

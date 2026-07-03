@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 interface ScreenHeaderProps {
   title: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
 }
 

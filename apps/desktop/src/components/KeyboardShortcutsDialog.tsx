@@ -34,8 +34,7 @@ const SECTIONS: { heading: string; rows: [string, string][] }[] = [
   {
     heading: "Navigation",
     rows: [
-      ["Decks", "G then D"],
-      ["Study", "G then S"],
+      ["Decks & Study", "G then D"],
       ["Browse", "G then B"],
       ["Settings", "G then ,"],
     ],

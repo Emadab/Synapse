@@ -1,20 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  BookOpen,
-  Check,
-  Flag,
-  Layers,
-  MinusCircle,
-  PlusCircle,
-  SkipForward,
-  Volume2,
-} from "lucide-react";
+import { Check, Flag, MinusCircle, Settings, SkipForward, Volume2 } from "lucide-react";
 import renderMathInElement from "katex/contrib/auto-render";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { DeckOptionsDialog } from "@/components/DeckOptionsDialog";
+import { DeckCounts } from "@/components/decks/DeckCounts";
+import { ExtendTodayLimit } from "@/components/decks/IncreaseLimitControl";
 import { ipc, isTauri, Rating, type RatingValue } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
 import { mediaUrl, prepareCard } from "@/lib/renderCard";
@@ -38,125 +33,10 @@ const KATEX_OPTIONS = {
   throwOnError: false,
 } as const;
 
-export function StudyScreen() {
-  const tauri = isTauri();
-  const [deckId, setDeckId] = useState<number | null>(null);
-
-  if (deckId === null) {
-    return <DeckPicker enabled={tauri} onPick={setDeckId} />;
-  }
-  return <Session deckId={deckId} onExit={() => setDeckId(null)} />;
-}
-
-function CountBadge({ count, color }: { count: number; color: string }) {
-  if (count === 0) return null;
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums ${color}`}>
-      {count}
-    </span>
-  );
-}
-
-function DeckPicker({
-  enabled,
-  onPick,
-}: {
-  enabled: boolean;
-  onPick: (deckId: number) => void;
-}) {
-  const decks = useQuery({ queryKey: queryKeys.decks, queryFn: ipc.listDecks, enabled });
-
-  return (
-    <div className="flex h-full flex-col">
-      <ScreenHeader title="Study" description="Pick a deck to review." />
-      <div className="flex-1 overflow-auto p-8">
-        {!enabled ? (
-          <EmptyState
-            icon={BookOpen}
-            title="Run the desktop app"
-            description="Study runs against the Rust core over Tauri. Launch with `pnpm dev`."
-          />
-        ) : (
-          <motion.ul
-            className="mx-auto flex max-w-md flex-col gap-2"
-            variants={staggerList}
-            initial="hidden"
-            animate="show"
-          >
-            {(decks.data ?? []).map((deck) => (
-              <motion.li key={deck.id} variants={listItem}>
-                <DeckRow deck={deck} onPick={() => onPick(deck.id)} />
-              </motion.li>
-            ))}
-          </motion.ul>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DeckRow({
-  deck,
-  onPick,
-}: {
-  deck: { id: number; name: string; new_count: number; learning_count: number; review_count: number };
-  onPick: () => void;
-}) {
-  const [extendOpen, setExtendOpen] = useState(false);
-
-  return (
-    <div className="rounded-lg border border-border transition-colors hover:bg-accent">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <button
-          className="flex flex-1 items-center gap-3 text-left text-sm font-medium"
-          onClick={onPick}
-        >
-          <Layers className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1 truncate">{deck.name}</span>
-        </button>
-        <span className="flex items-center gap-1">
-          <CountBadge
-            count={deck.new_count}
-            color="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-          />
-          <CountBadge
-            count={deck.learning_count}
-            color="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-          />
-          <CountBadge
-            count={deck.review_count}
-            color="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-          />
-        </span>
-        <button
-          className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          title="Increase today's new card limit"
-          aria-label="Increase today's new card limit"
-          onClick={(e) => {
-            e.stopPropagation();
-            setExtendOpen((o) => !o);
-          }}
-        >
-          <PlusCircle className="size-4" />
-        </button>
-      </div>
-      <AnimatePresence initial={false}>
-        {extendOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: dur.fast, ease }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-border px-4 py-3">
-              <IncreaseLimitControl deckId={deck.id} onDone={() => setExtendOpen(false)} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+export function StudySessionScreen() {
+  const { deckId } = useParams({ from: "/study/$deckId" });
+  const navigate = useNavigate();
+  return <Session deckId={deckId} onExit={() => void navigate({ to: "/" })} />;
 }
 
 function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
@@ -165,7 +45,15 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
   const prefersReduced = useReducedMotion();
   const [revealed, setRevealed] = useState(false);
   const [flagMenuOpen, setFlagMenuOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const flagRef = useRef<HTMLDivElement>(null);
+
+  const deckName = useQuery({
+    queryKey: queryKeys.decks,
+    queryFn: ipc.listDecks,
+    enabled: tauri,
+    select: (decks) => decks.find((d) => d.id === deckId)?.name,
+  }).data;
 
   const cardQuery = useQuery({
     queryKey: queryKeys.queue(String(deckId)),
@@ -177,17 +65,12 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
 
   const answerMut = useMutation({
     mutationFn: ({ cardId, rating }: { cardId: number; rating: RatingValue }) =>
-      ipc.answerCard(cardId, rating),
+      ipc.answerCard(cardId, rating, deckId),
     onSuccess: (next) => {
       queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
       setRevealed(false);
     },
   });
-
-  const advanceAfterAction = (next: typeof cardQuery.data | null) => {
-    queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
-    setRevealed(false);
-  };
 
   const suspendMut = useMutation({
     mutationFn: (cardId: number) => ipc.suspendCards([cardId]),
@@ -319,35 +202,21 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [card, revealed, answerMut, actionBusy, suspendMut, buryMut, replayAudio]);
 
-  void advanceAfterAction;
-
   const flipDuration = prefersReduced ? 0 : dur.slow;
   const fadeDuration = prefersReduced ? 0 : dur.base;
 
   return (
     <div className="flex h-full flex-col">
       <ScreenHeader
-        title="Studying"
+        title={deckName ? `Studying · ${deckName}` : "Studying"}
         actions={
           <div className="flex items-center gap-3">
             {card && (
-              <span className="flex items-center gap-1.5 tabular-nums">
-                {card.new_count > 0 && (
-                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                    {card.new_count}
-                  </span>
-                )}
-                {card.learning_count > 0 && (
-                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                    {card.learning_count}
-                  </span>
-                )}
-                {card.review_count > 0 && (
-                  <span className="rounded px-1.5 py-0.5 text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
-                    {card.review_count}
-                  </span>
-                )}
-              </span>
+              <DeckCounts
+                newCount={card.new_count}
+                learningCount={card.learning_count}
+                reviewCount={card.review_count}
+              />
             )}
             <Button variant="ghost" size="sm" onClick={onExit}>
               Back to decks
@@ -530,78 +399,32 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                   void queryClient.refetchQueries({ queryKey: queryKeys.queue(String(deckId)) })
                 }
               />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs text-muted-foreground"
+                onClick={() => setOptionsOpen(true)}
+              >
+                <Settings className="size-3.5" />
+                Deck options
+              </Button>
             </div>
           }
         />
       )}
-    </div>
-  );
-}
 
-/** Toggle button + inline form; used at the "all done" screen once a session hits the day's cap. */
-function ExtendTodayLimit({ deckId, onDone }: { deckId: number; onDone: () => void }) {
-  const [open, setOpen] = useState(false);
-
-  if (!open) {
-    return (
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-1.5 text-xs text-muted-foreground"
-        onClick={() => setOpen(true)}
-      >
-        <PlusCircle className="size-3.5" />
-        Increase today's new card limit
-      </Button>
-    );
-  }
-
-  return (
-    <IncreaseLimitControl
-      deckId={deckId}
-      onDone={() => {
-        setOpen(false);
-        onDone();
-      }}
-    />
-  );
-}
-
-/** Inline "study N more new cards today" form. Persists via `ipc.increaseTodayLimit`
- * and refreshes the deck list badge before calling `onDone`. */
-function IncreaseLimitControl({ deckId, onDone }: { deckId: number; onDone: () => void }) {
-  const queryClient = useQueryClient();
-  const [extra, setExtra] = useState(10);
-
-  const increaseMut = useMutation({
-    mutationFn: (extraNew: number) => ipc.increaseTodayLimit(deckId, extraNew),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.decks });
-      onDone();
-    },
-  });
-
-  return (
-    <div className="flex items-center gap-2 rounded-lg bg-secondary/40 px-3 py-2 text-sm">
-      <span className="text-muted-foreground">Study</span>
-      <input
-        type="number"
-        min={1}
-        max={9999}
-        value={extra}
-        onChange={(e) => setExtra(Math.max(1, Number(e.target.value)))}
-        className="h-7 w-16 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        autoFocus
-      />
-      <span className="text-muted-foreground">more new cards today</span>
-      <Button
-        size="sm"
-        className="h-7"
-        disabled={increaseMut.isPending}
-        onClick={() => increaseMut.mutate(extra)}
-      >
-        Add
-      </Button>
+      <AnimatePresence>
+        {optionsOpen && deckName && (
+          <DeckOptionsDialog
+            deckId={deckId}
+            deckName={deckName}
+            onClose={() => setOptionsOpen(false)}
+            onSaved={() =>
+              void queryClient.invalidateQueries({ queryKey: queryKeys.queue(String(deckId)) })
+            }
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

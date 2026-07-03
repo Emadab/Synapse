@@ -3,7 +3,6 @@ import { Command } from "cmdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
   BarChart3,
-  BookOpen,
   Download,
   Layers,
   Moon,
@@ -73,13 +72,7 @@ export function CommandPalette() {
 
         <Command.Group heading="Navigation">
           <Command.Item className={itemClass} onSelect={() => go("/")}>
-            <Layers /> Decks
-          </Command.Item>
-          <Command.Item className={itemClass} onSelect={() => go("/study")}>
-            <BookOpen /> Study
-            <span className={shortcutClass}>
-              <Kbd>S</Kbd>
-            </span>
+            <Layers /> Decks &amp; Study
           </Command.Item>
           <Command.Item className={itemClass} onSelect={() => go("/browse")}>
             <Search /> Browse cards
@@ -101,7 +94,7 @@ export function CommandPalette() {
               className={itemClass}
               onSelect={() => {
                 close();
-                void navigate({ to: "/" });
+                void navigate({ to: "/", search: { create: true } });
               }}
             >
               <Plus /> New deck

@@ -177,6 +177,11 @@ pub trait Storage: Send + Sync {
         today_end_ms: i64,
     ) -> CoreResult<HashMap<i64, (u32, u32, u32)>>;
 
+    /// `due` for a set of card ids, keyed by id. Used to merge several decks'
+    /// learning streams into one soonest-first order when studying a deck
+    /// with subdecks.
+    fn cards_due_ms(&self, card_ids: &[i64]) -> CoreResult<HashMap<i64, i64>>;
+
     /// `(new_per_day, rev_per_day)` from the deck config's JSON.
     fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)>;
 

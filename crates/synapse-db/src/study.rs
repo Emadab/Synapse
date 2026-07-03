@@ -494,6 +494,28 @@ pub fn deck_due_counts(
     Ok(map)
 }
 
+/// `due` for a set of card ids, keyed by id. Used to merge multiple decks'
+/// learning streams into one soonest-first order (see subdeck rollup in
+/// `Collection::next_card_id`).
+pub fn cards_due_ms(conn: &Connection, card_ids: &[i64]) -> CoreResult<HashMap<i64, i64>> {
+    if card_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let json = serde_json::to_string(card_ids).map_err(err)?;
+    let mut stmt = conn
+        .prepare("SELECT id, due FROM cards WHERE id IN (SELECT value FROM json_each(?1))")
+        .map_err(err)?;
+    let mut map = HashMap::new();
+    let rows = stmt
+        .query_map([json], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+        .map_err(err)?;
+    for row in rows {
+        let (id, due) = row.map_err(err)?;
+        map.insert(id, due);
+    }
+    Ok(map)
+}
+
 pub fn study_card(conn: &Connection, card_id: i64) -> CoreResult<Option<StudyCard>> {
     let row = conn
         .query_row(

@@ -91,7 +91,9 @@ impl Collection {
         ))
     }
 
-    /// Decks with per-type card counts `(new, learning, review)`, capped by daily limits.
+    /// Decks with per-type card counts `(new, learning, review)`, capped by daily
+    /// limits and rolled up to include every non-filtered subdeck (Anki
+    /// behavior: a parent's badge reflects its whole subtree).
     #[allow(clippy::type_complexity)]
     pub fn list_decks_with_counts(&self) -> CoreResult<Vec<(Deck, (u32, u32, u32))>> {
         let decks = self.storage.list_decks()?;
@@ -102,8 +104,9 @@ impl Collection {
         let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
         let studied = self.storage.all_today_studied(today_start_ms)?;
         let extra_new = self.storage.all_day_extra_new(self.today())?;
-        Ok(decks
-            .into_iter()
+
+        let own_capped: std::collections::HashMap<i64, (u32, u32, u32)> = decks
+            .iter()
             .map(|d| {
                 let (new_raw, learning, review_raw) =
                     raw_counts.get(&d.id).copied().unwrap_or((0, 0, 0));
@@ -116,43 +119,99 @@ impl Collection {
                     learning,
                     review_raw.min(rev_per_day.saturating_sub(rev_studied)),
                 );
+                (d.id, capped)
+            })
+            .collect();
+
+        let parent_of: std::collections::HashMap<i64, Option<i64>> =
+            decks.iter().map(|d| (d.id, d.parent_id)).collect();
+
+        // Add every non-filtered deck's own counts into each of its ancestors.
+        // Filtered decks pull cards from elsewhere and are excluded from the
+        // rollup (studied only directly, never as part of a parent's subtree).
+        let mut rolled = own_capped.clone();
+        for d in &decks {
+            if d.is_filtered {
+                continue;
+            }
+            let (n, l, r) = own_capped.get(&d.id).copied().unwrap_or((0, 0, 0));
+            let mut parent = d.parent_id;
+            while let Some(pid) = parent {
+                let entry = rolled.entry(pid).or_insert((0, 0, 0));
+                entry.0 += n;
+                entry.1 += l;
+                entry.2 += r;
+                parent = parent_of.get(&pid).copied().flatten();
+            }
+        }
+
+        Ok(decks
+            .into_iter()
+            .map(|d| {
+                let capped = rolled.get(&d.id).copied().unwrap_or((0, 0, 0));
                 (d, capped)
             })
             .collect())
     }
 
-    /// Count of studyable cards by type `(new, learning, review)` (respects daily limits).
+    /// `deck_id` plus every non-filtered subdeck under it, or just `deck_id`
+    /// alone if it is itself a filtered deck (filtered decks pull cards from
+    /// elsewhere and are always studied in isolation, never as part of a
+    /// parent's subtree).
+    fn study_subtree(&self, deck_id: i64) -> CoreResult<Vec<i64>> {
+        let deck = self
+            .storage
+            .deck_by_id(deck_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        if deck.is_filtered {
+            return Ok(vec![deck_id]);
+        }
+        let filtered_ids: std::collections::HashSet<i64> = self
+            .storage
+            .list_decks()?
+            .into_iter()
+            .filter(|d| d.is_filtered)
+            .map(|d| d.id)
+            .collect();
+        Ok(self
+            .deck_and_descendants(deck_id)?
+            .into_iter()
+            .filter(|id| *id == deck_id || !filtered_ids.contains(id))
+            .collect())
+    }
+
+    /// Count of studyable cards by type `(new, learning, review)` across
+    /// `deck_id` and its subtree (respects each subdeck's own daily limits).
     pub fn count_due_by_type(&self, deck_id: i64) -> CoreResult<(u32, u32, u32)> {
-        let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
-        self.storage.count_due_by_type(
-            deck_id,
-            self.today(),
-            self.now_ms(),
-            self.today_end_ms(),
-            new_limit,
-            review_limit,
-        )
+        let today = self.today();
+        let now_ms = self.now_ms();
+        let today_end_ms = self.today_end_ms();
+        let mut total = (0u32, 0u32, 0u32);
+        for id in self.study_subtree(deck_id)? {
+            let (new_limit, review_limit) = self.remaining_limits(id)?;
+            let (n, l, r) = self
+                .storage
+                .count_due_by_type(id, today, now_ms, today_end_ms, new_limit, review_limit)?;
+            total.0 += n;
+            total.1 += l;
+            total.2 += r;
+        }
+        Ok(total)
     }
 
-    /// Count of studyable cards in `deck_id` right now (respects daily limits).
+    /// Total count of studyable cards in `deck_id` and its subtree right now.
     pub fn count_due(&self, deck_id: i64) -> CoreResult<u32> {
-        let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
-        self.storage.count_due(
-            deck_id,
-            self.today(),
-            self.now_ms(),
-            self.today_end_ms(),
-            new_limit,
-            review_limit,
-        )
+        let (n, l, r) = self.count_due_by_type(deck_id)?;
+        Ok(n + l + r)
     }
 
-    /// The next card to study in a deck, if any (respects daily limits).
+    /// The next card to study in a deck (or its subtree), if any (respects
+    /// each subdeck's own daily limits).
     ///
-    /// Order: learning cards due now (time-critical, soonest first), then a
-    /// proportional interleave of new and review cards so new cards surface
-    /// throughout the session, then — only if nothing else is due — the soonest
-    /// learn-ahead card.
+    /// Order: learning cards due now across the subtree (time-critical,
+    /// soonest first), then a proportional interleave of new and review cards
+    /// so new cards surface throughout the session, then — only if nothing
+    /// else is due — the soonest learn-ahead card.
     pub fn next_card(&self, deck_id: i64) -> CoreResult<Option<StudyCard>> {
         match self.next_card_id(deck_id)? {
             Some(id) => self.storage.study_card(id),
@@ -160,45 +219,80 @@ impl Collection {
         }
     }
 
-    /// Pick the id of the next card to study, applying the queue ordering policy.
+    /// Pick the id of the next card to study, applying the queue ordering
+    /// policy across `deck_id`'s subtree. Each subdeck's own `study_queue`
+    /// call already caps that deck's streams to its own remaining limits;
+    /// this only merges those already-capped streams into one order.
     fn next_card_id(&self, deck_id: i64) -> CoreResult<Option<i64>> {
-        let (new_limit, review_limit) = self.remaining_limits(deck_id)?;
-        let queue = self.storage.study_queue(
-            deck_id,
-            self.today(),
-            self.now_ms(),
-            self.today_end_ms(),
-            new_limit,
-            review_limit,
-        )?;
+        let subtree = self.study_subtree(deck_id)?;
+        let today = self.today();
+        let now_ms = self.now_ms();
+        let today_end_ms = self.today_end_ms();
 
-        // 1. Learning due now — already ordered soonest-first.
-        if let Some(&id) = queue.learning.first() {
+        let mut learning: Vec<i64> = Vec::new();
+        let mut new: Vec<i64> = Vec::new();
+        let mut review: Vec<i64> = Vec::new();
+        let mut learning_ahead: Vec<i64> = Vec::new();
+        for &id in &subtree {
+            let (new_limit, review_limit) = self.remaining_limits(id)?;
+            let queue = self
+                .storage
+                .study_queue(id, today, now_ms, today_end_ms, new_limit, review_limit)?;
+            learning.extend(queue.learning);
+            new.extend(queue.new);
+            review.extend(queue.review);
+            learning_ahead.extend(queue.learning_ahead);
+        }
+
+        // 1. Learning due now — soonest first across the whole subtree. A
+        //    single deck's queue is already sorted by due; merging several
+        //    needs an explicit due lookup.
+        if !learning.is_empty() {
+            let id = if subtree.len() == 1 {
+                learning[0]
+            } else {
+                let due = self.storage.cards_due_ms(&learning)?;
+                *learning
+                    .iter()
+                    .min_by_key(|id| due.get(id).copied().unwrap_or(i64::MAX))
+                    .unwrap()
+            };
             return Ok(Some(id));
         }
 
         // 2. Proportional interleave of new vs review. Today's studied counts
-        //    pace the ratio: pick whichever stream is proportionally behind.
-        //    The queue is rebuilt each call and `today_studied` advances after
-        //    every answer, so the running ratio stays even without session state.
-        let next_new = queue.new.first().copied();
-        let next_review = queue.review.first().copied();
+        //    across the whole subtree pace the ratio: pick whichever stream is
+        //    proportionally behind. The queue is rebuilt each call and
+        //    `today_studied` advances after every answer, so the running ratio
+        //    stays even without session state.
+        let next_new = new.first().copied();
+        let next_review = review.first().copied();
         match (next_new, next_review) {
             (Some(n), Some(r)) => {
-                let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
-                let (new_done, rev_done) = self.storage.today_studied(deck_id, today_start_ms)?;
-                let take_new = prefer_new(
-                    new_done,
-                    queue.new.len() as u32,
-                    rev_done,
-                    queue.review.len() as u32,
-                );
+                let today_start_ms = self.created_ms + i64::from(today) * MS_PER_DAY;
+                let all_studied = self.storage.all_today_studied(today_start_ms)?;
+                let (new_done, rev_done) = subtree.iter().fold((0u32, 0u32), |(nd, rd), id| {
+                    let (n2, r2) = all_studied.get(id).copied().unwrap_or((0, 0));
+                    (nd + n2, rd + r2)
+                });
+                let take_new = prefer_new(new_done, new.len() as u32, rev_done, review.len() as u32);
                 Ok(Some(if take_new { n } else { r }))
             }
             (Some(n), None) => Ok(Some(n)),
             (None, Some(r)) => Ok(Some(r)),
             // 3. Nothing due now — fall back to the soonest learn-ahead card.
-            (None, None) => Ok(queue.learning_ahead),
+            (None, None) => {
+                if learning_ahead.is_empty() {
+                    Ok(None)
+                } else if subtree.len() == 1 {
+                    Ok(learning_ahead.first().copied())
+                } else {
+                    let due = self.storage.cards_due_ms(&learning_ahead)?;
+                    Ok(learning_ahead
+                        .into_iter()
+                        .min_by_key(|id| due.get(id).copied().unwrap_or(i64::MAX)))
+                }
+            }
         }
     }
 
@@ -344,9 +438,13 @@ impl Collection {
         self.storage.get_deck_config(deck.config_id)
     }
 
-    /// Unbury all buried cards in `deck_id` (day rollover / session start).
+    /// Unbury all buried cards in `deck_id` and its subtree (day rollover /
+    /// session start).
     pub fn start_study_session(&self, deck_id: i64) -> CoreResult<()> {
-        self.storage.unbury_deck(deck_id)
+        for id in self.study_subtree(deck_id)? {
+            self.storage.unbury_deck(id)?;
+        }
+        Ok(())
     }
 
     /// Render inputs + scheduling state for a specific card.
@@ -934,10 +1032,17 @@ mod tests {
 
     /// Minimal in-memory `Storage` fake so the application layer can be tested
     /// without `synapse-db`. (synapse-db has its own SQLite-backed tests.)
+    ///
+    /// `queues`/`due_ms`/`due_counts` are test fixtures: unset entries fall
+    /// back to empty/zero, matching the original all-stub behavior, so
+    /// existing tests that never populate them are unaffected.
     #[derive(Default)]
     struct FakeStorage {
         decks: Mutex<Vec<Deck>>,
         next_id: AtomicUsize,
+        queues: Mutex<std::collections::HashMap<i64, crate::ports::StudyQueue>>,
+        due_ms: Mutex<std::collections::HashMap<i64, i64>>,
+        due_counts: Mutex<std::collections::HashMap<i64, (u32, u32, u32)>>,
     }
 
     impl FakeStorage {
@@ -1032,36 +1137,50 @@ mod tests {
         }
         fn study_queue(
             &self,
-            _deck_id: i64,
+            deck_id: i64,
             _today: i32,
             _now_ms: i64,
             _today_end_ms: i64,
             _new_limit: u32,
             _review_limit: u32,
         ) -> CoreResult<crate::ports::StudyQueue> {
-            Ok(crate::ports::StudyQueue::default())
+            Ok(self
+                .queues
+                .lock()
+                .unwrap()
+                .get(&deck_id)
+                .cloned()
+                .unwrap_or_default())
         }
         fn count_due_by_type(
             &self,
-            _deck_id: i64,
+            deck_id: i64,
             _today: i32,
             _now_ms: i64,
             _today_end_ms: i64,
             _new_limit: u32,
             _review_limit: u32,
         ) -> CoreResult<(u32, u32, u32)> {
-            Ok((0, 0, 0))
+            Ok(self
+                .due_counts
+                .lock()
+                .unwrap()
+                .get(&deck_id)
+                .copied()
+                .unwrap_or((0, 0, 0)))
         }
         fn count_due(
             &self,
-            _deck_id: i64,
-            _today: i32,
-            _now_ms: i64,
-            _today_end_ms: i64,
-            _new_limit: u32,
-            _review_limit: u32,
+            deck_id: i64,
+            today: i32,
+            now_ms: i64,
+            today_end_ms: i64,
+            new_limit: u32,
+            review_limit: u32,
         ) -> CoreResult<u32> {
-            Ok(0)
+            let (n, l, r) =
+                self.count_due_by_type(deck_id, today, now_ms, today_end_ms, new_limit, review_limit)?;
+            Ok(n + l + r)
         }
         fn deck_due_counts(
             &self,
@@ -1069,7 +1188,14 @@ mod tests {
             _now_ms: i64,
             _today_end_ms: i64,
         ) -> CoreResult<std::collections::HashMap<i64, (u32, u32, u32)>> {
-            Ok(std::collections::HashMap::new())
+            Ok(self.due_counts.lock().unwrap().clone())
+        }
+        fn cards_due_ms(&self, card_ids: &[i64]) -> CoreResult<std::collections::HashMap<i64, i64>> {
+            let due = self.due_ms.lock().unwrap();
+            Ok(card_ids
+                .iter()
+                .filter_map(|id| due.get(id).map(|&ms| (*id, ms)))
+                .collect())
         }
         fn deck_limits(&self, _config_id: i64) -> CoreResult<(u32, u32)> {
             Ok((20, 200))
@@ -1466,5 +1592,153 @@ mod tests {
         assert!(c.list_decks().unwrap().is_empty());
         c.undo().unwrap();
         assert_eq!(c.list_decks().unwrap()[0].name, "Spanish");
+    }
+
+    fn deck(id: i64, name: &str, parent_id: Option<i64>, is_filtered: bool) -> Deck {
+        Deck {
+            id,
+            name: name.into(),
+            parent_id,
+            config_id: 1,
+            mod_ms: 0,
+            usn: -1,
+            collapsed: false,
+            is_filtered,
+        }
+    }
+
+    #[test]
+    fn list_decks_with_counts_rolls_up_subdecks() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().extend([
+            deck(1, "Spanish", None, false),
+            deck(2, "Spanish::Verbs", Some(1), false),
+            deck(3, "Cram", Some(1), true), // filtered: excluded from parent rollup
+        ]);
+        {
+            let mut counts = storage.due_counts.lock().unwrap();
+            counts.insert(1, (2, 0, 0));
+            counts.insert(2, (5, 1, 3));
+            counts.insert(3, (9, 9, 9));
+        }
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        let by_id: std::collections::HashMap<i64, (u32, u32, u32)> = c
+            .list_decks_with_counts()
+            .unwrap()
+            .into_iter()
+            .map(|(d, counts)| (d.id, counts))
+            .collect();
+
+        assert_eq!(by_id[&1], (7, 1, 3), "parent rolls up its own + child's counts");
+        assert_eq!(by_id[&2], (5, 1, 3), "child counts are unaffected");
+        assert_eq!(
+            by_id[&3],
+            (9, 9, 9),
+            "filtered deck reports only its own counts"
+        );
+    }
+
+    #[test]
+    fn count_due_by_type_sums_subtree_excluding_filtered() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().extend([
+            deck(1, "Spanish", None, false),
+            deck(2, "Spanish::Verbs", Some(1), false),
+            deck(3, "Cram", Some(1), true),
+        ]);
+        {
+            let mut counts = storage.due_counts.lock().unwrap();
+            counts.insert(1, (1, 0, 0));
+            counts.insert(2, (2, 1, 1));
+            counts.insert(3, (100, 100, 100));
+        }
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        assert_eq!(c.count_due_by_type(1).unwrap(), (3, 1, 1));
+        assert_eq!(c.count_due(1).unwrap(), 5);
+    }
+
+    #[test]
+    fn next_card_prefers_soonest_learning_across_subtree() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().extend([
+            deck(1, "Spanish", None, false),
+            deck(2, "Spanish::Verbs", Some(1), false),
+        ]);
+        {
+            let mut queues = storage.queues.lock().unwrap();
+            queues.insert(
+                1,
+                crate::ports::StudyQueue {
+                    learning: vec![101],
+                    ..Default::default()
+                },
+            );
+            queues.insert(
+                2,
+                crate::ports::StudyQueue {
+                    learning: vec![201],
+                    ..Default::default()
+                },
+            );
+        }
+        {
+            let mut due = storage.due_ms.lock().unwrap();
+            due.insert(101, 5_000);
+            due.insert(201, 1_000); // the child's card is due sooner
+        }
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        // Studying the parent surfaces the child's card because it's soonest due.
+        assert_eq!(c.next_card_id(1).unwrap(), Some(201));
+        // Studying the child directly only ever sees its own queue.
+        assert_eq!(c.next_card_id(2).unwrap(), Some(201));
+    }
+
+    #[test]
+    fn next_card_interleaves_new_and_review_across_subtree() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().extend([
+            deck(1, "Spanish", None, false),
+            deck(2, "Spanish::Verbs", Some(1), false),
+        ]);
+        {
+            let mut queues = storage.queues.lock().unwrap();
+            queues.insert(
+                1,
+                crate::ports::StudyQueue {
+                    new: vec![11],
+                    ..Default::default()
+                },
+            );
+            queues.insert(
+                2,
+                crate::ports::StudyQueue {
+                    review: vec![22],
+                    ..Default::default()
+                },
+            );
+        }
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        // No cards studied yet on either stream: `prefer_new` ties toward new.
+        assert_eq!(c.next_card_id(1).unwrap(), Some(11));
+    }
+
+    #[test]
+    fn filtered_deck_studies_in_isolation() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().push(deck(1, "Cram", None, true));
+        storage.queues.lock().unwrap().insert(
+            1,
+            crate::ports::StudyQueue {
+                new: vec![11],
+                ..Default::default()
+            },
+        );
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        assert_eq!(c.next_card_id(1).unwrap(), Some(11));
     }
 }

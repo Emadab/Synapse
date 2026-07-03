@@ -534,6 +534,10 @@ impl Storage for SqliteStorage {
         study::deck_due_counts(&self.lock(), today, now_ms, today_end_ms)
     }
 
+    fn cards_due_ms(&self, card_ids: &[i64]) -> CoreResult<std::collections::HashMap<i64, i64>> {
+        study::cards_due_ms(&self.lock(), card_ids)
+    }
+
     fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)> {
         study::deck_limits(&self.lock(), config_id)
     }
