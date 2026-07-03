@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { listen } from "@tauri-apps/api/event";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -13,7 +14,7 @@ import {
   Undo2,
   X,
 } from "lucide-react";
-import type { DeckSummary, FilteredDeckConfig, ImportSummary } from "@synapse/ipc-types";
+import type { DeckSummary, FilteredDeckConfig, ImportProgress, ImportSummary } from "@synapse/ipc-types";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -202,14 +203,30 @@ export function DeckBrowserScreen() {
   const [showFilteredDialog, setShowFilteredDialog] = useState(false);
   const [rebuildTarget, setRebuildTarget] = useState<FilteredDeckConfig | null>(null);
 
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+
+  useEffect(() => {
+    if (!tauri) return;
+    const unlisten = listen<ImportProgress>("synapse://import-progress", ({ payload }) => {
+      setImportProgress(payload);
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, [tauri]);
+
   const importMut = useMutation({
-    mutationFn: pickAndImportPackage,
+    mutationFn: () => {
+      setImportProgress(null);
+      return pickAndImportPackage();
+    },
     onSuccess: (summary) => {
       if (summary) {
         setLastImport(summary);
         void invalidateDecks();
       }
     },
+    onSettled: () => setImportProgress(null),
   });
 
   const createMut = useMutation({
@@ -256,7 +273,12 @@ export function DeckBrowserScreen() {
               disabled={!tauri || importMut.isPending}
               title="Import an Anki .apkg / .colpkg"
             >
-              <Download /> {importMut.isPending ? "Importing…" : "Import"}
+              <Download />{" "}
+              {importMut.isPending
+                ? importProgress && importProgress.total > 0
+                  ? `Importing… ${importProgress.done}/${importProgress.total}`
+                  : "Importing…"
+                : "Import"}
             </Button>
             <Button
               variant="outline"

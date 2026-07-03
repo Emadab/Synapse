@@ -446,9 +446,17 @@ impl Storage for SqliteStorage {
     }
 
     fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary> {
+        self.import_with_progress(model, &mut |_, _| {})
+    }
+
+    fn import_with_progress(
+        &self,
+        model: &CanonicalModel,
+        on_progress: &mut dyn FnMut(u32, u32),
+    ) -> CoreResult<ImportSummary> {
         let mut conn = self.lock();
         let tx = conn.transaction().map_err(storage_err)?;
-        let summary = import::import(&tx, model)?;
+        let summary = import::import(&tx, model, on_progress)?;
         tx.commit().map_err(storage_err)?;
         Ok(summary)
     }

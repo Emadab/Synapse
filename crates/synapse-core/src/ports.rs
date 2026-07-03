@@ -113,6 +113,18 @@ pub trait Storage: Send + Sync {
     /// (which owns the media directory) fills it in.
     fn import(&self, model: &CanonicalModel) -> CoreResult<ImportSummary>;
 
+    /// Same as [`Storage::import`], but calls `on_progress(done, total)`
+    /// periodically as notes/cards are merged, for long-running imports.
+    /// Default implementation ignores progress and defers to `import`.
+    fn import_with_progress(
+        &self,
+        model: &CanonicalModel,
+        on_progress: &mut dyn FnMut(u32, u32),
+    ) -> CoreResult<ImportSummary> {
+        let _ = on_progress;
+        self.import(model)
+    }
+
     /// Ensure the singleton collection row exists; returns its creation time
     /// (ms), which anchors the day-number used for scheduling.
     fn ensure_collection(&self, now_ms: i64) -> CoreResult<i64>;

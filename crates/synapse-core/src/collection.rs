@@ -707,6 +707,18 @@ impl Collection {
         Ok(summary)
     }
 
+    /// Same as [`Collection::import`], but reports progress via `on_progress`
+    /// as notes/cards are merged — for surfacing a live indicator on large imports.
+    pub fn import_with_progress(
+        &self,
+        model: &CanonicalModel,
+        on_progress: &mut dyn FnMut(u32, u32),
+    ) -> CoreResult<ImportSummary> {
+        let summary = self.storage.import_with_progress(model, on_progress)?;
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(summary)
+    }
+
     /// All note types with their ordered field names, for the Add Note picker.
     pub fn list_notetypes(&self) -> CoreResult<Vec<NotetypeSummary>> {
         let notetypes = self.storage.list_notetypes()?;

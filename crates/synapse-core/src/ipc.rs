@@ -24,6 +24,15 @@ pub struct AppInfo {
     pub media_dir: String,
 }
 
+/// Live progress for a running import, emitted periodically on the
+/// `synapse://import-progress` event while notes/cards are merged.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ImportProgress {
+    pub done: u32,
+    pub total: u32,
+}
+
 /// Full per-deck scheduling configuration for the options dialog (M14).
 /// Replaces the narrow `DeckOptions` (new/rev limits only).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
