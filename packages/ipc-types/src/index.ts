@@ -25,6 +25,7 @@ export type { DeckStat } from "./generated/DeckStat";
 export type { NotetypeSummary } from "./generated/NotetypeSummary";
 export type { AddNoteResult } from "./generated/AddNoteResult";
 export type { DeckConfig } from "./generated/DeckConfig";
+export type { CollectionPrefs } from "./generated/CollectionPrefs";
 export type { FieldSummary } from "./generated/FieldSummary";
 export type { TemplateSummary } from "./generated/TemplateSummary";
 export type { NotetypeDetail } from "./generated/NotetypeDetail";

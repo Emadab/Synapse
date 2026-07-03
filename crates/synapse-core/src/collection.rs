@@ -6,13 +6,14 @@
 //! emits a domain event. The shell (Tauri) constructs it with a concrete
 //! storage + clock and never reaches past these methods.
 
+use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::error::{CoreError, CoreResult};
 use crate::events::{DomainEvent, EventBus, EventSink};
 use crate::ipc::{
-    AddNoteResult, CardRow, DeckConfig, DeckSummary, FieldRemoveWarning, FilteredDeckConfig,
-    NoteDetail, NoteOverview, NotetypeDetail, NotetypeSummary, StatsDto,
+    AddNoteResult, CardRow, CollectionPrefs, DeckConfig, DeckSummary, FieldRemoveWarning,
+    FilteredDeckConfig, NoteDetail, NoteOverview, NotetypeDetail, NotetypeSummary, StatsDto,
 };
 use crate::model::{CanonicalModel, Deck, ImportSummary, NoteIndexRow, Revlog, StudyCard};
 use crate::ports::{Clock, Storage};
@@ -41,6 +42,15 @@ pub struct Collection {
     undo: Mutex<UndoLog>,
     /// Collection creation time (ms); anchors the scheduling day-number.
     created_ms: i64,
+    /// Local hour (0-23) at which "today" rolls over, mirroring Anki's day
+    /// cutoff. Loaded from storage at construction; updated by
+    /// [`Collection::set_collection_prefs`].
+    rollover_hour: AtomicU8,
+    /// Frontend's local UTC offset in minutes (`-Date#getTimezoneOffset()`),
+    /// applied so the rollover hour is evaluated in local, not UTC, time. Set
+    /// once at startup via [`Collection::set_local_offset_minutes`]; defaults
+    /// to UTC until then.
+    tz_offset_minutes: AtomicI32,
 }
 
 impl Collection {
@@ -48,25 +58,76 @@ impl Collection {
     /// collection row exists and emits [`DomainEvent::CollectionOpened`].
     pub fn new(storage: Box<dyn Storage>, clock: Arc<dyn Clock>) -> Self {
         let created_ms = storage.ensure_collection(clock.now_ms()).unwrap_or(0);
+        let rollover_hour = storage.get_rollover_hour().unwrap_or(4);
         let collection = Self {
             storage,
             clock,
             events: Arc::new(EventBus::new()),
             undo: Mutex::new(UndoLog::default()),
             created_ms,
+            rollover_hour: AtomicU8::new(rollover_hour),
+            tz_offset_minutes: AtomicI32::new(0),
         };
         collection.events.emit(DomainEvent::CollectionOpened);
         collection
     }
 
-    /// Today's day-number (days since collection creation).
-    pub fn today(&self) -> i32 {
-        ((self.clock.now_ms() - self.created_ms) / MS_PER_DAY) as i32
+    /// Day index of `ms` in local time, in units of whole days since the
+    /// rollover hour last passed — i.e. bucketing `ms` into rollover-aligned
+    /// days rather than calendar/UTC days.
+    fn local_day_index(&self, ms: i64) -> i64 {
+        let tz_off_ms = i64::from(self.tz_offset_minutes.load(Ordering::Relaxed)) * 60_000;
+        let rollover_ms = i64::from(self.rollover_hour.load(Ordering::Relaxed)) * 3_600_000;
+        (ms + tz_off_ms - rollover_ms).div_euclid(MS_PER_DAY)
     }
 
-    /// Start of tomorrow in ms — used as the learning-card gate for today's session.
+    /// Today's day-number (days since collection creation), aligned to the
+    /// configured local rollover hour.
+    pub fn today(&self) -> i32 {
+        (self.local_day_index(self.clock.now_ms()) - self.local_day_index(self.created_ms)) as i32
+    }
+
+    /// Start of today in ms (UTC) — the most recent local rollover instant.
+    fn today_start_ms(&self) -> i64 {
+        self.today_end_ms() - MS_PER_DAY
+    }
+
+    /// Start of tomorrow in ms (UTC) — used as the learning-card gate for today's session.
     fn today_end_ms(&self) -> i64 {
-        self.created_ms + i64::from(self.today() + 1) * MS_PER_DAY
+        let tz_off_ms = i64::from(self.tz_offset_minutes.load(Ordering::Relaxed)) * 60_000;
+        let rollover_ms = i64::from(self.rollover_hour.load(Ordering::Relaxed)) * 3_600_000;
+        let next_local_day = self.local_day_index(self.clock.now_ms()) + 1;
+        next_local_day * MS_PER_DAY + rollover_ms - tz_off_ms
+    }
+
+    /// Current day-rollover preferences.
+    pub fn get_collection_prefs(&self) -> CoreResult<CollectionPrefs> {
+        Ok(CollectionPrefs {
+            rollover_hour: self.rollover_hour.load(Ordering::Relaxed),
+        })
+    }
+
+    /// Persist the day-rollover hour and apply it immediately. Since the day
+    /// number is derived from the current rollover hour rather than stored
+    /// per-card, changing it takes effect on the next `today()` call — same
+    /// as Anki's behavior when the cutoff hour is changed.
+    pub fn set_collection_prefs(&self, prefs: &CollectionPrefs) -> CoreResult<()> {
+        if prefs.rollover_hour > 23 {
+            return Err(CoreError::Invalid("rollover hour must be 0-23".into()));
+        }
+        self.storage
+            .set_rollover_hour(prefs.rollover_hour, self.now_ms())?;
+        self.rollover_hour
+            .store(prefs.rollover_hour, Ordering::Relaxed);
+        self.events.emit(DomainEvent::SchemaChanged);
+        Ok(())
+    }
+
+    /// Record the frontend's local UTC offset (minutes, `-Date#getTimezoneOffset()`)
+    /// so the rollover hour is evaluated in local rather than UTC time.
+    /// Desktop-only; the shell calls this once at startup.
+    pub fn set_local_offset_minutes(&self, minutes: i32) {
+        self.tz_offset_minutes.store(minutes, Ordering::Relaxed);
     }
 
     /// Current wall-clock time in ms (from the injected clock).
@@ -83,7 +144,7 @@ impl Collection {
             .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
         let (new_per_day, rev_per_day) = self.storage.deck_limits(deck.config_id)?;
         let extra_new = self.storage.day_extra_new(deck_id, self.today())?;
-        let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
+        let today_start_ms = self.today_start_ms();
         let (new_studied, rev_studied) = self.storage.today_studied(deck_id, today_start_ms)?;
         Ok((
             (new_per_day + extra_new).saturating_sub(new_studied),
@@ -101,7 +162,7 @@ impl Collection {
             self.storage
                 .deck_due_counts(self.today(), self.now_ms(), self.today_end_ms())?;
         let all_limits = self.storage.all_deck_limits()?;
-        let today_start_ms = self.created_ms + i64::from(self.today()) * MS_PER_DAY;
+        let today_start_ms = self.today_start_ms();
         let studied = self.storage.all_today_studied(today_start_ms)?;
         let extra_new = self.storage.all_day_extra_new(self.today())?;
 
@@ -1230,6 +1291,12 @@ mod tests {
             _config: &crate::scheduling::SchedConfig,
             _now_ms: i64,
         ) -> CoreResult<()> {
+            Ok(())
+        }
+        fn get_rollover_hour(&self) -> CoreResult<u8> {
+            Ok(4)
+        }
+        fn set_rollover_hour(&self, _hour: u8, _now_ms: i64) -> CoreResult<()> {
             Ok(())
         }
         fn day_extra_new(&self, _deck_id: i64, _day: i32) -> CoreResult<u32> {

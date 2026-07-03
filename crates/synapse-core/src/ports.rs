@@ -210,6 +210,13 @@ pub trait Storage: Send + Sync {
     /// Persist full scheduling config for a `deck_config` row.
     fn set_deck_config(&self, config_id: i64, config: &SchedConfig, now_ms: i64) -> CoreResult<()>;
 
+    /// Configured day-rollover hour (0-23, local time; Anki default is 4am),
+    /// read from the `collection.config` JSON blob.
+    fn get_rollover_hour(&self) -> CoreResult<u8>;
+
+    /// Persist the day-rollover hour into the `collection.config` JSON blob.
+    fn set_rollover_hour(&self, hour: u8, now_ms: i64) -> CoreResult<()>;
+
     /// Extra new-card allowance for `deck_id` on collection-day `day` (0 if none set).
     fn day_extra_new(&self, deck_id: i64, day: i32) -> CoreResult<u32>;
 

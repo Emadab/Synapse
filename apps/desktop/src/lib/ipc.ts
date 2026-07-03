@@ -5,6 +5,7 @@ import type {
   AppInfo,
   BackupInfo,
   CardRow,
+  CollectionPrefs,
   FsrsOptimizeResult,
   DeckConfig,
   DeckSummary,
@@ -44,6 +45,10 @@ export const ipc = {
   // Full deck config (M14)
   getDeckConfig: (deckId: number) => invoke<DeckConfig>("get_deck_config", { deckId }),
   setDeckConfig: (config: DeckConfig) => invoke<void>("set_deck_config", { config }),
+  getCollectionPrefs: () => invoke<CollectionPrefs>("get_collection_prefs"),
+  setCollectionPrefs: (prefs: CollectionPrefs) =>
+    invoke<void>("set_collection_prefs", { prefs }),
+  setLocalOffset: (minutes: number) => invoke<void>("set_local_offset", { minutes }),
 
   // Today's new-card limit override (Anki-style "increase today's limit")
   getTodayExtraNew: (deckId: number) => invoke<number>("get_today_extra_new", { deckId }),

@@ -522,6 +522,42 @@ function UpdateSection() {
   );
 }
 
+function RolloverSection() {
+  const prefsQuery = useQuery({ queryKey: ["collectionPrefs"], queryFn: ipc.getCollectionPrefs });
+  const [msg, setMsg] = useState("");
+
+  const setRolloverMut = useMutation({
+    mutationFn: (rollover_hour: number) => ipc.setCollectionPrefs({ rollover_hour }),
+    onSuccess: () => {
+      setMsg("Saved.");
+      void prefsQuery.refetch();
+    },
+    onError: (e) => setMsg(errorMessage(e)),
+  });
+
+  return (
+    <div className="flex items-center gap-3">
+      <label htmlFor="rollover-hour" className="text-sm">
+        Day starts at
+      </label>
+      <select
+        id="rollover-hour"
+        className="h-7 rounded border border-input bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        value={prefsQuery.data?.rollover_hour ?? 4}
+        disabled={!prefsQuery.data}
+        onChange={(e) => setRolloverMut.mutate(Number(e.target.value))}
+      >
+        {Array.from({ length: 24 }, (_, h) => (
+          <option key={h} value={h}>
+            {h.toString().padStart(2, "0")}:00
+          </option>
+        ))}
+      </select>
+      {msg && <span className="text-sm text-muted-foreground">{msg}</span>}
+    </div>
+  );
+}
+
 const themes: { value: Theme; label: string }[] = [
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
@@ -566,11 +602,15 @@ export function SettingsScreen() {
           </div>
         </section>
 
-        <section className="mt-8 max-w-xl space-y-1">
-          <h2 className="text-sm font-medium">Scheduling</h2>
-          <p className="text-sm text-muted-foreground">
-            SM-2 and FSRS are both implemented and switchable per deck via deck options.
-          </p>
+        <section className="mt-8 max-w-xl space-y-3">
+          <div>
+            <h2 className="text-sm font-medium">Scheduling</h2>
+            <p className="text-sm text-muted-foreground">
+              SM-2 and FSRS are both implemented and switchable per deck via deck options. New
+              cards, reviews and daily limits roll over to the next day at this hour.
+            </p>
+          </div>
+          {tauri && <RolloverSection />}
         </section>
 
         {tauri && (

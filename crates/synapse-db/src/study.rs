@@ -307,6 +307,41 @@ pub fn ensure_collection(conn: &Connection, now_ms: i64) -> CoreResult<i64> {
     .map_err(err)
 }
 
+const DEFAULT_ROLLOVER_HOUR: u8 = 4;
+
+pub fn get_rollover_hour(conn: &Connection) -> CoreResult<u8> {
+    let json: String = conn
+        .query_row("SELECT config FROM collection WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+        .optional()
+        .map_err(err)?
+        .unwrap_or_else(|| "{}".to_string());
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+    Ok(v["rolloverHour"]
+        .as_u64()
+        .map(|h| h.min(23) as u8)
+        .unwrap_or(DEFAULT_ROLLOVER_HOUR))
+}
+
+pub fn set_rollover_hour(conn: &Connection, hour: u8, now_ms: i64) -> CoreResult<()> {
+    let json: String = conn
+        .query_row("SELECT config FROM collection WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+        .optional()
+        .map_err(err)?
+        .unwrap_or_else(|| "{}".to_string());
+    let mut v: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+    v["rolloverHour"] = serde_json::Value::Number(hour.min(23).into());
+    conn.execute(
+        "UPDATE collection SET config = ?1, modified = ?2 WHERE id = 1",
+        params![v.to_string(), now_ms],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
 /// New-card order jitter. New cards carry their import position in `due` — for a
 /// frequency-ranked deck that means most-frequent first. We sort by that rank
 /// plus a small random offset in `0..NEW_ORDER_JITTER`, so the run stays roughly

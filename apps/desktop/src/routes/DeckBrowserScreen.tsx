@@ -34,6 +34,11 @@ export function DeckBrowserScreen() {
     queryKey: queryKeys.decks,
     queryFn: ipc.listDecks,
     enabled: tauri,
+    // Backend "today" rolls over independently of user activity, and cache
+    // invalidation elsewhere only fires on explicit mutation events — poll so
+    // new-card counts don't stay frozen if the deck browser is left open
+    // across a day boundary.
+    refetchInterval: 60_000,
   });
 
   const invalidateDecks = () => queryClient.invalidateQueries({ queryKey: queryKeys.decks });

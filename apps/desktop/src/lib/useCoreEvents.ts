@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useQueryClient } from "@tanstack/react-query";
-import { isTauri } from "@/lib/ipc";
+import { ipc, isTauri } from "@/lib/ipc";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -11,6 +11,13 @@ import { queryKeys } from "@/lib/queryKeys";
  */
 export function useCoreEvents() {
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    // Rust core has no OS timezone access; the day-rollover boundary is
+    // evaluated in local time using this offset, sent once per session.
+    void ipc.setLocalOffset(-new Date().getTimezoneOffset());
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) return;

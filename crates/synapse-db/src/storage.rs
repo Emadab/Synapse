@@ -587,6 +587,14 @@ impl Storage for SqliteStorage {
         study::set_deck_config(&self.lock(), config_id, config, now_ms)
     }
 
+    fn get_rollover_hour(&self) -> CoreResult<u8> {
+        study::get_rollover_hour(&self.lock())
+    }
+
+    fn set_rollover_hour(&self, hour: u8, now_ms: i64) -> CoreResult<()> {
+        study::set_rollover_hour(&self.lock(), hour, now_ms)
+    }
+
     fn study_card(&self, card_id: i64) -> CoreResult<Option<StudyCard>> {
         study::study_card(&self.lock(), card_id)
     }

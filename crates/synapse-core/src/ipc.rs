@@ -33,6 +33,15 @@ pub struct ImportProgress {
     pub total: u32,
 }
 
+/// Collection-wide preferences (not per-deck). Currently just the day-rollover
+/// hour, mirroring Anki's day cutoff setting.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CollectionPrefs {
+    /// Local hour (0-23) at which "today" rolls over. Anki's default is 4am.
+    pub rollover_hour: u8,
+}
+
 /// Full per-deck scheduling configuration for the options dialog (M14).
 /// Replaces the narrow `DeckOptions` (new/rev limits only).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
