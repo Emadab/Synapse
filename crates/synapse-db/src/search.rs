@@ -9,7 +9,10 @@
 //!   tag:name        (exact tag match)
 //!   note:name       (notetype exact match)
 //!   added:N         (cards added in the last N days)
-//!   prop:ivl/lapses/reps/ease/due OP value  (OP = > < = >= <=)
+//!   prop:ivl/lapses/reps/ease/due/stability/difficulty OP value  (OP = > < = >= <=)
+//!   answered:<phase>:<ease>[:sinceDays]  (phase = learning|young|mature; mirrors the
+//!     stats-dashboard answer-buttons aggregate — distinct cards with a revlog row of
+//!     that grade/phase, optionally within the last N days)
 //!   -token          (negate any token)
 //!   "multi word"    (quoted phrase, text LIKE)
 //!   or              (infix OR between surrounding conditions)
@@ -27,6 +30,7 @@ fn err(e: impl std::fmt::Display) -> CoreError {
 #[derive(Debug, Clone)]
 enum Param {
     Int(i64),
+    Real(f64),
     Text(String),
 }
 
@@ -34,6 +38,7 @@ impl rusqlite::ToSql for Param {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
         match self {
             Param::Int(n) => n.to_sql(),
+            Param::Real(f) => f.to_sql(),
             Param::Text(s) => s.to_sql(),
         }
     }
@@ -151,6 +156,12 @@ fn parse_token(token: &str, today: i32, now_ms: i64) -> Option<Cond> {
         return parse_prop(rest);
     }
 
+    // answered:<phase>:<ease>[:sinceDays] — distinct cards with a revlog row
+    // of that grade/phase, mirroring the stats answer-buttons aggregate.
+    if let Some(rest) = token.strip_prefix("answered:") {
+        return parse_answered(rest, now_ms);
+    }
+
     // Quoted phrase or bare text → LIKE on fields and sort_field
     let text = dequote(token);
     if !text.is_empty() {
@@ -178,6 +189,8 @@ fn parse_prop(rest: &str) -> Option<Cond> {
                 "reps" => "c.reps",
                 "due" => "c.due",
                 "ease" => "c.ease_factor",
+                "stability" => "c.fsrs_stability",
+                "difficulty" => "c.fsrs_difficulty",
                 _ => return None,
             };
             // ease is stored in milli-percent (2500 = 250%); user writes 250.
@@ -189,6 +202,10 @@ fn parse_prop(rest: &str) -> Option<Cond> {
                         vec![Param::Int(v_milli)],
                     ));
                 }
+            } else if field == "stability" || field == "difficulty" {
+                if let Ok(v) = val_str.parse::<f64>() {
+                    return Some(Cond::pos(format!("{col} {op} ?"), vec![Param::Real(v)]));
+                }
             } else if let Ok(v) = val_str.parse::<i64>() {
                 return Some(Cond::pos(format!("{col} {op} ?"), vec![Param::Int(v)]));
             }
@@ -196,6 +213,37 @@ fn parse_prop(rest: &str) -> Option<Cond> {
         }
     }
     None
+}
+
+/// Parse `answered:<phase>:<ease>[:sinceDays]` into a distinct-card subquery
+/// over `revlog`, mirroring the phase/ease bucketing in `synapse-db::stats`
+/// (answer-buttons aggregate): phase 0 = learning (review_kind IN (0,2)),
+/// young = review_kind 1 with last_interval < 21, mature = >= 21.
+fn parse_answered(rest: &str, now_ms: i64) -> Option<Cond> {
+    let parts: Vec<&str> = rest.split(':').collect();
+    let phase = *parts.first()?;
+    let ease: i64 = parts.get(1)?.parse().ok()?;
+    if !(1..=4).contains(&ease) {
+        return None;
+    }
+    let phase_sql = match phase {
+        "learning" => "r.review_kind IN (0, 2)",
+        "young" => "r.review_kind = 1 AND r.last_interval < 21",
+        "mature" => "r.review_kind = 1 AND r.last_interval >= 21",
+        _ => return None,
+    };
+
+    let mut sql = format!(
+        "c.id IN (SELECT r.card_id FROM revlog r WHERE r.ease = ? AND r.review_kind <= 2 AND {phase_sql}"
+    );
+    let mut params = vec![Param::Int(ease)];
+    if let Some(days_str) = parts.get(2) {
+        let days: i64 = days_str.parse().ok()?;
+        sql.push_str(" AND r.id >= ?");
+        params.push(Param::Int(now_ms - days * 86_400_000));
+    }
+    sql.push(')');
+    Some(Cond::pos(sql, params))
 }
 
 fn dequote(s: &str) -> String {
@@ -596,6 +644,64 @@ mod tests {
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].lapses, 1);
+    }
+
+    #[test]
+    fn prop_stability_and_difficulty() {
+        let (s, card1, _) = setup();
+        s.lock()
+            .execute(
+                "UPDATE cards SET fsrs_stability = 12.5, fsrs_difficulty = 4.2 WHERE id = ?1",
+                [card1],
+            )
+            .unwrap();
+        let rows = s
+            .search_cards("prop:stability>10", 0, 1_700_000_000_000, 100, 0)
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].sort_field, "hello");
+
+        let rows = s
+            .search_cards(
+                "prop:difficulty>=4 prop:difficulty<5",
+                0,
+                1_700_000_000_000,
+                100,
+                0,
+            )
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].sort_field, "hello");
+    }
+
+    #[test]
+    fn answered_filter() {
+        let (s, _, card2) = setup();
+        let now_ms = 1_700_000_000_000i64;
+        s.lock()
+            .execute(
+                "INSERT INTO revlog (id, card_id, usn, ease, interval, last_interval, ease_factor, taken_ms, review_kind)
+                 VALUES (?1, ?2, -1, 3, 30, 30, 2500, 0, 1)",
+                rusqlite::params![now_ms - 1000, card2],
+            )
+            .unwrap();
+        let rows = s
+            .search_cards("answered:mature:3", 0, now_ms, 100, 0)
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].sort_field, "cat");
+
+        // Wrong ease matches nothing.
+        let rows = s
+            .search_cards("answered:mature:1", 0, now_ms, 100, 0)
+            .unwrap();
+        assert_eq!(rows.len(), 0);
+
+        // sinceDays window excludes it when too narrow.
+        let rows = s
+            .search_cards("answered:mature:3:0", 0, now_ms + 2 * 86_400_000, 100, 0)
+            .unwrap();
+        assert_eq!(rows.len(), 0);
     }
 
     #[test]

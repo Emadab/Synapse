@@ -47,16 +47,34 @@ const studyRedirectRoute = createRoute({
     throw redirect({ to: "/" });
   },
 });
+export interface StatsSearch {
+  deck?: number;
+  range?: "7d" | "1m" | "3m" | "1y" | "all";
+}
+
+export interface BrowseSearch {
+  q?: string;
+  from?: "stats";
+  backDeck?: number;
+  backRange?: StatsSearch["range"];
+}
+
+const STATS_RANGES = ["7d", "1m", "3m", "1y", "all"] as const;
+
 const browseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/browse",
   component: BrowseScreen,
   errorComponent,
+  validateSearch: (search: Record<string, unknown>): BrowseSearch => ({
+    q: typeof search.q === "string" ? search.q : undefined,
+    from: search.from === "stats" ? "stats" : undefined,
+    backDeck: typeof search.backDeck === "number" ? search.backDeck : undefined,
+    backRange: STATS_RANGES.includes(search.backRange as never)
+      ? (search.backRange as StatsSearch["range"])
+      : undefined,
+  }),
 });
-export interface StatsSearch {
-  deck?: number;
-  range?: "7d" | "1m" | "3m" | "1y" | "all";
-}
 
 const statsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -65,7 +83,7 @@ const statsRoute = createRoute({
   errorComponent,
   validateSearch: (search: Record<string, unknown>): StatsSearch => ({
     deck: typeof search.deck === "number" ? search.deck : undefined,
-    range: (["7d", "1m", "3m", "1y", "all"] as const).includes(search.range as never)
+    range: STATS_RANGES.includes(search.range as never)
       ? (search.range as StatsSearch["range"])
       : undefined,
   }),

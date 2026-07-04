@@ -13,11 +13,13 @@ import {
   axisProps,
   categorical,
   gridProps,
+  tooltipCursor,
   tooltipItemStyle,
   tooltipLabelStyle,
   tooltipStyle,
 } from "./chartTheme";
 import { ExportButton } from "./ExportButton";
+import { forecastQuery } from "./statQuery";
 
 const FORECAST_DAYS = 30;
 const BACKLOG_COLOR = "hsl(1 74% 59%)"; // status-adjacent red, distinct from the categorical due-bar color
@@ -25,17 +27,24 @@ const BACKLOG_COLOR = "hsl(1 74% 59%)"; // status-adjacent red, distinct from th
 export function ForecastChart({
   forecast,
   backlogCount,
+  today,
+  onDrill,
+  deckName,
 }: {
   forecast: DayCount[];
   backlogCount: number;
+  today: number;
+  onDrill: (query: string) => void;
+  deckName: string | null;
 }) {
   const map = new Map(forecast.map((d) => [d.day, d.count]));
   const data = [
-    { label: "overdue", count: backlogCount, isBacklog: true },
+    { label: "overdue", count: backlogCount, isBacklog: true, dayOffset: null as number | null },
     ...Array.from({ length: FORECAST_DAYS + 1 }, (_, i) => ({
       label: i === 0 ? "today" : `+${i}`,
       count: map.get(i) ?? 0,
       isBacklog: false,
+      dayOffset: i,
     })),
   ];
 
@@ -68,10 +77,22 @@ export function ForecastChart({
             contentStyle={tooltipStyle}
             itemStyle={tooltipItemStyle}
             labelStyle={tooltipLabelStyle}
+            cursor={tooltipCursor}
           />
-          <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+          <Bar
+            dataKey="count"
+            radius={[3, 3, 0, 0]}
+            onClick={(d) => {
+              const payload = d.payload as (typeof data)[number];
+              onDrill(forecastQuery(payload.dayOffset, today, deckName));
+            }}
+          >
             {data.map((d) => (
-              <Cell key={d.label} fill={d.isBacklog ? BACKLOG_COLOR : categorical[0]} />
+              <Cell
+                key={d.label}
+                fill={d.isBacklog ? BACKLOG_COLOR : categorical[0]}
+                cursor="pointer"
+              />
             ))}
           </Bar>
         </BarChart>

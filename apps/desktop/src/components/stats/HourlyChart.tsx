@@ -12,6 +12,7 @@ import type { HourlyStat } from "@synapse/ipc-types";
 import {
   gridProps,
   sequential,
+  tooltipCursor,
   tooltipItemStyle,
   tooltipLabelStyle,
   tooltipStyle,
@@ -69,6 +70,7 @@ export function HourlyChart({ hourly }: { hourly: HourlyStat[] }) {
             contentStyle={tooltipStyle}
             itemStyle={tooltipItemStyle}
             labelStyle={tooltipLabelStyle}
+            cursor={tooltipCursor}
             formatter={(value, _name, item) => {
               const rate =
                 (item?.payload as { passRate: number | null } | undefined)?.passRate ?? null;

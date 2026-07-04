@@ -186,3 +186,20 @@
     }
   }
 }
+
+/* Recharts bars/sectors (and the wrapper/surface that hosts them) get a
+   browser default focus ring on click since they're focusable SVG/div
+   elements; we show our own subtle Tooltip cursor instead (see
+   chartTheme.tooltipCursor), so drop the outline everywhere in the chart.
+   Kept outside @layer: these class names are injected by recharts at
+   runtime and never appear as literal strings in our source, so Tailwind's
+   content-based tree-shaking silently strips them if placed inside a
+   @layer block. */
+.recharts-responsive-container :focus,
+.recharts-responsive-container:focus,
+.recharts-wrapper:focus,
+.recharts-wrapper :focus,
+.recharts-surface:focus,
+.recharts-surface :focus {
+  outline: none;
+}

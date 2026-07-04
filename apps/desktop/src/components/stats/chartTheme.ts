@@ -45,3 +45,10 @@ export const gridProps = {
   strokeDasharray: "3 3",
   vertical: false,
 } as const;
+
+/**
+ * Recharts' default Tooltip `cursor` is an opaque grey rectangle that hides
+ * the bar underneath it. This keeps the hover/active highlight subtle enough
+ * that the colored bar stays visible.
+ */
+export const tooltipCursor = { fill: "hsl(var(--foreground))", fillOpacity: 0.06 } as const;

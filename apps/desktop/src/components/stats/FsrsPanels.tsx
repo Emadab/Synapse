@@ -6,14 +6,24 @@ import {
   axisProps,
   gridProps,
   sequential,
+  tooltipCursor,
   tooltipItemStyle,
   tooltipLabelStyle,
   tooltipStyle,
 } from "./chartTheme";
+import { difficultyQuery, stabilityQuery } from "./statQuery";
 
 const STABILITY_LABELS = ["<1d", "1-7d", "7-21d", "21-90d", "90-180d", "180-365d", "365d+"];
 
-export function FsrsPanels({ fsrs }: { fsrs: FsrsStats }) {
+export function FsrsPanels({
+  fsrs,
+  onDrill,
+  deckName,
+}: {
+  fsrs: FsrsStats;
+  onDrill: (query: string) => void;
+  deckName: string | null;
+}) {
   if (fsrs.card_count === 0) {
     return (
       <EmptyState
@@ -27,8 +37,13 @@ export function FsrsPanels({ fsrs }: { fsrs: FsrsStats }) {
   const stabilityData = fsrs.stability_buckets.map((count, i) => ({
     label: STABILITY_LABELS[i],
     count,
+    bucketIndex: i,
   }));
-  const difficultyData = fsrs.difficulty_buckets.map((count, i) => ({ label: `${i + 1}`, count }));
+  const difficultyData = fsrs.difficulty_buckets.map((count, i) => ({
+    label: `${i + 1}`,
+    count,
+    bucketIndex: i,
+  }));
 
   return (
     <div className="space-y-6">
@@ -51,8 +66,18 @@ export function FsrsPanels({ fsrs }: { fsrs: FsrsStats }) {
               contentStyle={tooltipStyle}
               itemStyle={tooltipItemStyle}
               labelStyle={tooltipLabelStyle}
+              cursor={tooltipCursor}
             />
-            <Bar dataKey="count" fill={sequential[3]} radius={[3, 3, 0, 0]} />
+            <Bar
+              dataKey="count"
+              fill={sequential[3]}
+              radius={[3, 3, 0, 0]}
+              cursor="pointer"
+              onClick={(d) => {
+                const payload = d.payload as (typeof stabilityData)[number];
+                onDrill(stabilityQuery(payload.bucketIndex, deckName));
+              }}
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -67,8 +92,18 @@ export function FsrsPanels({ fsrs }: { fsrs: FsrsStats }) {
               contentStyle={tooltipStyle}
               itemStyle={tooltipItemStyle}
               labelStyle={tooltipLabelStyle}
+              cursor={tooltipCursor}
             />
-            <Bar dataKey="count" fill={sequential[3]} radius={[3, 3, 0, 0]} />
+            <Bar
+              dataKey="count"
+              fill={sequential[3]}
+              radius={[3, 3, 0, 0]}
+              cursor="pointer"
+              onClick={(d) => {
+                const payload = d.payload as (typeof difficultyData)[number];
+                onDrill(difficultyQuery(payload.bucketIndex, deckName));
+              }}
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>

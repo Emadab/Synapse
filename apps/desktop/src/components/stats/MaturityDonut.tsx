@@ -1,6 +1,7 @@
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { StatsDto } from "@synapse/ipc-types";
 import { categorical, tooltipItemStyle, tooltipLabelStyle, tooltipStyle } from "./chartTheme";
+import { maturityQuery, type MaturityBucket } from "./statQuery";
 
 const MATURITY_COLORS: Record<string, string> = {
   New: categorical[0],
@@ -10,7 +11,23 @@ const MATURITY_COLORS: Record<string, string> = {
   Suspended: "hsl(var(--muted-foreground))",
 };
 
-export function MaturityDonut({ stats }: { stats: StatsDto }) {
+const MATURITY_BUCKETS: Record<string, MaturityBucket> = {
+  New: "new",
+  Learning: "learning",
+  Young: "young",
+  Mature: "mature",
+  Suspended: "suspended",
+};
+
+export function MaturityDonut({
+  stats,
+  onDrill,
+  deckName,
+}: {
+  stats: StatsDto;
+  onDrill: (query: string) => void;
+  deckName: string | null;
+}) {
   const data = [
     { name: "New", value: stats.new_count },
     { name: "Learning", value: stats.learning_count },
@@ -34,6 +51,11 @@ export function MaturityDonut({ stats }: { stats: StatsDto }) {
           outerRadius={75}
           paddingAngle={2}
           stroke="none"
+          cursor="pointer"
+          onClick={(d) => {
+            const payload = d.payload as { name: string };
+            onDrill(maturityQuery(MATURITY_BUCKETS[payload.name], deckName));
+          }}
         >
           {data.map((entry) => (
             <Cell key={entry.name} fill={MATURITY_COLORS[entry.name]} />

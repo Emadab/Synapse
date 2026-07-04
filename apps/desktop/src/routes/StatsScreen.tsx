@@ -43,6 +43,19 @@ export function StatsScreen() {
     queryFn: ipc.listDecks,
     enabled: tauri,
   });
+  const deckName = decksQuery.data?.find((d) => d.id === deckId)?.name ?? null;
+
+  const drill = (query: string) => {
+    void navigate({
+      to: "/browse",
+      search: {
+        q: query,
+        from: "stats",
+        backDeck: deckId ?? undefined,
+        backRange: range === "all" ? undefined : range,
+      },
+    });
+  };
   const statsQuery = useQuery({
     queryKey: queryKeys.stats(deckId, days),
     queryFn: () => ipc.getStats(deckId, days),
@@ -70,7 +83,13 @@ export function StatsScreen() {
               onRangeChange={setRange}
             />
             {statsQuery.data ? (
-              <Dashboard stats={statsQuery.data} onSelectDeck={setDeckId} />
+              <Dashboard
+                stats={statsQuery.data}
+                onSelectDeck={setDeckId}
+                onDrill={drill}
+                deckName={deckName}
+                rangeDays={days}
+              />
             ) : (
               <div className="space-y-6">
                 <PanelSkeleton height={88} />
@@ -88,9 +107,15 @@ export function StatsScreen() {
 function Dashboard({
   stats,
   onSelectDeck,
+  onDrill,
+  deckName,
+  rangeDays,
 }: {
   stats: StatsDto;
   onSelectDeck: (deckId: number) => void;
+  onDrill: (query: string) => void;
+  deckName: string | null;
+  rangeDays: number | null;
 }) {
   const today = useMemo(
     () => Math.floor((Date.now() - stats.day0_ms) / 86_400_000),
@@ -132,7 +157,12 @@ function Dashboard({
       <div className="grid gap-6 md:grid-cols-2">
         <motion.div variants={listItem}>
           <Panel title="Answer buttons">
-            <AnswerButtonsChart buttons={stats.answer_buttons} />
+            <AnswerButtonsChart
+              buttons={stats.answer_buttons}
+              onDrill={onDrill}
+              deckName={deckName}
+              rangeDays={rangeDays}
+            />
           </Panel>
         </motion.div>
         <motion.div variants={listItem}>
@@ -145,19 +175,25 @@ function Dashboard({
       <div className="grid gap-6 md:grid-cols-2">
         <motion.div variants={listItem}>
           <Panel title="Forecast (next 30 days)">
-            <ForecastChart forecast={stats.forecast} backlogCount={stats.backlog_count} />
+            <ForecastChart
+              forecast={stats.forecast}
+              backlogCount={stats.backlog_count}
+              today={today}
+              onDrill={onDrill}
+              deckName={deckName}
+            />
           </Panel>
         </motion.div>
         <motion.div variants={listItem}>
           <Panel title="Card maturity">
-            <MaturityDonut stats={stats} />
+            <MaturityDonut stats={stats} onDrill={onDrill} deckName={deckName} />
           </Panel>
         </motion.div>
       </div>
 
       <motion.div variants={listItem}>
         <Panel title="FSRS memory model">
-          <FsrsPanels fsrs={stats.fsrs} />
+          <FsrsPanels fsrs={stats.fsrs} onDrill={onDrill} deckName={deckName} />
         </Panel>
       </motion.div>
 

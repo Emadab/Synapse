@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
+  ArrowLeft,
   ChevronDown,
   ChevronUp,
   Flag,
@@ -64,6 +66,7 @@ const QUERY_SYNTAX = `Syntax help:
   added:7  (last N days)
   prop:ivl>5   prop:lapses>=3   prop:reps<10
   prop:due>0   prop:ease>200
+  prop:stability<7   prop:difficulty>=5
   -is:new  (negate with -)
   word or phrase  (OR connector)`;
 
@@ -184,9 +187,11 @@ const BROWSE_PAGE_SIZE = 500;
 export function BrowseScreen() {
   const tauri = isTauri();
   const queryClient = useQueryClient();
+  const search = useSearch({ from: "/browse" });
+  const navigate = useNavigate({ from: "/browse" });
 
-  const [query, setQuery] = useState("");
-  const [submitted, setSubmitted] = useState("");
+  const [query, setQuery] = useState(search.q ?? "");
+  const [submitted, setSubmitted] = useState(search.q ?? "");
   const [sortKey, setSortKey] = useState<SortKey>("sort_field");
   const [sortAsc, setSortAsc] = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -366,6 +371,22 @@ export function BrowseScreen() {
   return (
     <div className="flex h-full flex-col">
       <ScreenHeader title="Browse" description="Search and edit cards with Anki-style queries." />
+
+      {search.from === "stats" && (
+        <button
+          type="button"
+          onClick={() =>
+            void navigate({
+              to: "/stats",
+              search: { deck: search.backDeck, range: search.backRange },
+            })
+          }
+          className="flex items-center gap-1.5 border-b border-border bg-secondary/40 px-4 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to Statistics
+        </button>
+      )}
 
       {/* Search bar */}
       <div className="flex items-center gap-2 border-b border-border px-4 py-2">

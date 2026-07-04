@@ -13,21 +13,39 @@ import {
   axisProps,
   categorical,
   gridProps,
+  tooltipCursor,
   tooltipItemStyle,
   tooltipLabelStyle,
   tooltipStyle,
 } from "./chartTheme";
 import { ExportButton } from "./ExportButton";
+import { answeredQuery, type AnswerPhase } from "./statQuery";
 
 const LABELS = ["Again", "Hard", "Good", "Easy"];
 
-export function AnswerButtonsChart({ buttons }: { buttons: AnswerButtons }) {
+export function AnswerButtonsChart({
+  buttons,
+  onDrill,
+  deckName,
+  rangeDays,
+}: {
+  buttons: AnswerButtons;
+  onDrill: (query: string) => void;
+  deckName: string | null;
+  rangeDays: number | null;
+}) {
   const data = LABELS.map((label, i) => ({
     label,
+    ease: i + 1,
     Learning: buttons.learning[i] ?? 0,
     Young: buttons.young[i] ?? 0,
     Mature: buttons.mature[i] ?? 0,
   }));
+
+  const drillPhase = (phase: AnswerPhase) => (d: { payload?: unknown }) => {
+    const payload = d.payload as (typeof data)[number];
+    onDrill(answeredQuery(phase, payload.ease, rangeDays, deckName));
+  };
 
   const total = data.reduce((sum, d) => sum + d.Learning + d.Young + d.Mature, 0);
   if (total === 0) {
@@ -48,11 +66,30 @@ export function AnswerButtonsChart({ buttons }: { buttons: AnswerButtons }) {
             contentStyle={tooltipStyle}
             itemStyle={tooltipItemStyle}
             labelStyle={tooltipLabelStyle}
+            cursor={tooltipCursor}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="Learning" fill={categorical[2]} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="Young" fill={categorical[0]} radius={[3, 3, 0, 0]} />
-          <Bar dataKey="Mature" fill={categorical[1]} radius={[3, 3, 0, 0]} />
+          <Bar
+            dataKey="Learning"
+            fill={categorical[2]}
+            radius={[3, 3, 0, 0]}
+            cursor="pointer"
+            onClick={drillPhase("learning")}
+          />
+          <Bar
+            dataKey="Young"
+            fill={categorical[0]}
+            radius={[3, 3, 0, 0]}
+            cursor="pointer"
+            onClick={drillPhase("young")}
+          />
+          <Bar
+            dataKey="Mature"
+            fill={categorical[1]}
+            radius={[3, 3, 0, 0]}
+            cursor="pointer"
+            onClick={drillPhase("mature")}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>
