@@ -112,6 +112,17 @@
       "calt" 1;
   }
 
+  body :where(*):not(
+      input,
+      textarea,
+      [contenteditable="true"],
+      [contenteditable=""],
+      .synapse-prose,
+      .synapse-prose *
+    ) {
+    user-select: none;
+  }
+
   :root {
     color-scheme: light;
   }

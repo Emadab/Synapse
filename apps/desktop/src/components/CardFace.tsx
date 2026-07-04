@@ -154,5 +154,5 @@ export function CardFace({
     target.innerHTML = diffTypedAnswer(typedAnswer ?? "", expected);
   }, [html, typedAnswer]);
 
-  return <div ref={hostRef} className={className} style={style} />;
+  return <div ref={hostRef} className={className} style={{ userSelect: "text", ...style }} />;
 }
