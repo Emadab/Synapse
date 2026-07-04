@@ -838,8 +838,9 @@ impl Storage for SqliteStorage {
         today: i32,
         now_ms: i64,
         limit: i64,
+        offset: i64,
     ) -> CoreResult<Vec<synapse_core::ipc::CardRow>> {
-        search::search_cards(&self.lock(), query, today, now_ms, limit)
+        search::search_cards(&self.lock(), query, today, now_ms, limit, offset)
     }
 
     fn delete_notes(&self, note_ids: &[i64], now_ms: i64) -> CoreResult<()> {

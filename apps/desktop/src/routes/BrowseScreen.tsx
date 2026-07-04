@@ -179,6 +179,8 @@ function TagSidebar({ onFilter }: { onFilter: (tag: string) => void }) {
 
 // ── main component ────────────────────────────────────────────────────────────
 
+const BROWSE_PAGE_SIZE = 500;
+
 export function BrowseScreen() {
   const tauri = isTauri();
   const queryClient = useQueryClient();
@@ -196,16 +198,41 @@ export function BrowseScreen() {
   const [deckInput, setDeckInput] = useState("");
   const bulkRef = useRef<HTMLDivElement>(null);
 
+  const [offset, setOffset] = useState(0);
+  const [rows, setRows] = useState<CardRow[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+
+  // New search: drop back to page 1.
+  useEffect(() => {
+    setOffset(0);
+    setRows([]);
+  }, [submitted]);
+
   const cardsQuery = useQuery({
-    queryKey: ["cards", submitted],
-    queryFn: () => ipc.searchCards(submitted),
+    queryKey: ["cards", submitted, offset],
+    queryFn: () => ipc.searchCards(submitted, offset),
     enabled: tauri,
   });
 
-  const rows = cardsQuery.data ?? [];
+  useEffect(() => {
+    if (!cardsQuery.data) return;
+    setRows((prev) => (offset === 0 ? cardsQuery.data! : [...prev, ...cardsQuery.data!]));
+    setHasMore(cardsQuery.data.length === BROWSE_PAGE_SIZE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardsQuery.data]);
+
   const sorted = sortRows(rows, sortKey, sortAsc);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["cards"] });
+  const invalidate = () => {
+    setOffset(0);
+    setRows([]);
+    void queryClient.invalidateQueries({ queryKey: ["cards"] });
+  };
+
+  function loadMore() {
+    if (cardsQuery.isFetching || !hasMore) return;
+    setOffset((o) => o + BROWSE_PAGE_SIZE);
+  }
 
   const deleteMut = useMutation({
     mutationFn: (noteIds: number[]) => ipc.deleteNotes(noteIds),
@@ -366,7 +393,8 @@ export function BrowseScreen() {
           ?
         </Button>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {rows.length} {rows.length === 1 ? "card" : "cards"}
+          {rows.length} {rows.length === 1 ? "card" : "cards"} loaded
+          {hasMore ? "+" : ""}
         </span>
       </div>
 
@@ -497,6 +525,18 @@ export function BrowseScreen() {
                 })}
               </tbody>
             </table>
+          )}
+          {hasMore && (
+            <div className="flex justify-center py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cardsQuery.isFetching}
+                onClick={loadMore}
+              >
+                {cardsQuery.isFetching ? "Loading…" : "Load more"}
+              </Button>
+            </div>
           )}
         </div>
 

@@ -77,11 +77,19 @@ pub fn search_notes(
     Ok(collection.notes_by_ids(&ids)?)
 }
 
+/// Cards returned per page from `search_cards`; frontend pages via `offset`.
+const BROWSE_PAGE_SIZE: i64 = 500;
+
 /// Anki-flavoured card search: supports is:/flag:/deck:/tag:/prop:/-/or.
-/// Returns up to 2000 card rows (cards, not notes) for the browser table.
+/// Returns one page (`BROWSE_PAGE_SIZE` rows) of card rows (cards, not notes)
+/// starting at `offset`, for the browser table.
 #[tauri::command]
-pub fn search_cards(collection: State<'_, Collection>, query: String) -> IpcResult<Vec<CardRow>> {
-    Ok(collection.search_cards(query.trim(), 2000)?)
+pub fn search_cards(
+    collection: State<'_, Collection>,
+    query: String,
+    offset: i64,
+) -> IpcResult<Vec<CardRow>> {
+    Ok(collection.search_cards(query.trim(), BROWSE_PAGE_SIZE, offset)?)
 }
 
 /// Delete notes (and their cards) by note id list.

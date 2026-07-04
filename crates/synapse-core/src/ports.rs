@@ -403,13 +403,14 @@ pub trait Storage: Send + Sync {
 
     // ── M16: rich search + bulk ops ───────────────────────────────────────────
 
-    /// Anki-flavoured query → card rows. `limit` caps result count.
+    /// Anki-flavoured query → card rows. `limit` caps result count, `offset` skips rows for paging.
     fn search_cards(
         &self,
         query: &str,
         today: i32,
         now_ms: i64,
         limit: i64,
+        offset: i64,
     ) -> CoreResult<Vec<CardRow>>;
 
     /// Delete notes (and their cards + revlogs) by id; write graves.

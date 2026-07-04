@@ -138,7 +138,7 @@ fn gather_cards(
     today: i32,
     now_ms: i64,
 ) -> CoreResult<u32> {
-    let rows = search::search_cards(conn, search_query, today, now_ms, limit as i64)?;
+    let rows = search::search_cards(conn, search_query, today, now_ms, limit as i64, 0)?;
     let card_ids: Vec<i64> = rows
         .iter()
         .filter(|r| r.queue >= 0) // exclude suspended / buried

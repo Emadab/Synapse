@@ -604,10 +604,10 @@ impl Collection {
         self.storage.index_rows()
     }
 
-    /// Anki-flavoured query → card rows (M16).
-    pub fn search_cards(&self, query: &str, limit: i64) -> CoreResult<Vec<CardRow>> {
+    /// Anki-flavoured query → card rows (M16). `offset` supports pagination.
+    pub fn search_cards(&self, query: &str, limit: i64, offset: i64) -> CoreResult<Vec<CardRow>> {
         self.storage
-            .search_cards(query, self.today(), self.clock.now_ms(), limit)
+            .search_cards(query, self.today(), self.clock.now_ms(), limit, offset)
     }
 
     /// Delete notes (and their cards + revlogs). Emits SchemaChanged.
@@ -1523,6 +1523,7 @@ mod tests {
             _today: i32,
             _now_ms: i64,
             _limit: i64,
+            _offset: i64,
         ) -> CoreResult<Vec<crate::ipc::CardRow>> {
             Ok(vec![])
         }

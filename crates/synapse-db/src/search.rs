@@ -290,12 +290,16 @@ pub fn search_cards(
     today: i32,
     now_ms: i64,
     limit: i64,
+    offset: i64,
 ) -> CoreResult<Vec<CardRow>> {
     let (where_clause, mut params) = build_where(query, today, now_ms);
     let limit_idx = params.len() + 1;
     params.push(Param::Int(limit));
+    let offset_idx = params.len() + 1;
+    params.push(Param::Int(offset));
 
-    let sql = format!("{BASE_SQL}{where_clause} ORDER BY c.id DESC LIMIT ?{limit_idx}");
+    let sql =
+        format!("{BASE_SQL}{where_clause} ORDER BY c.id DESC LIMIT ?{limit_idx} OFFSET ?{offset_idx}");
 
     let mut stmt = conn.prepare(&sql).map_err(err)?;
     let rows = stmt
@@ -527,14 +531,14 @@ mod tests {
     #[test]
     fn empty_query_returns_all() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s.search_cards("", 0, 1_700_000_000_000, 100, 0).unwrap();
         assert_eq!(rows.len(), 2);
     }
 
     #[test]
     fn is_new_filter() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("is:new", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s.search_cards("is:new", 0, 1_700_000_000_000, 100, 0).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].sort_field, "hello");
     }
@@ -543,7 +547,7 @@ mod tests {
     fn is_review_filter() {
         let (s, _, _) = setup();
         let rows = s
-            .search_cards("is:review", 0, 1_700_000_000_000, 100)
+            .search_cards("is:review", 0, 1_700_000_000_000, 100, 0)
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].sort_field, "cat");
@@ -553,7 +557,7 @@ mod tests {
     fn tag_filter() {
         let (s, _, _) = setup();
         let rows = s
-            .search_cards("tag:verb", 0, 1_700_000_000_000, 100)
+            .search_cards("tag:verb", 0, 1_700_000_000_000, 100, 0)
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert!(rows[0].tags.contains(&"verb".to_string()));
@@ -562,7 +566,7 @@ mod tests {
     #[test]
     fn flag_filter() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("flag:1", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s.search_cards("flag:1", 0, 1_700_000_000_000, 100, 0).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].flags, 1);
     }
@@ -571,7 +575,7 @@ mod tests {
     fn negation() {
         let (s, _, _) = setup();
         let rows = s
-            .search_cards("-is:new", 0, 1_700_000_000_000, 100)
+            .search_cards("-is:new", 0, 1_700_000_000_000, 100, 0)
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_ne!(rows[0].queue, 0);
@@ -580,7 +584,7 @@ mod tests {
     #[test]
     fn text_search() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("hello", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s.search_cards("hello", 0, 1_700_000_000_000, 100, 0).unwrap();
         assert_eq!(rows.len(), 1);
     }
 
@@ -588,7 +592,7 @@ mod tests {
     fn prop_lapses() {
         let (s, _, _) = setup();
         let rows = s
-            .search_cards("prop:lapses>0", 0, 1_700_000_000_000, 100)
+            .search_cards("prop:lapses>0", 0, 1_700_000_000_000, 100, 0)
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].lapses, 1);
@@ -605,7 +609,7 @@ mod tests {
             .map(|id| vec![id])
             .unwrap();
         s.delete_notes(&note_ids, 1_000).unwrap();
-        let rows = s.search_cards("", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s.search_cards("", 0, 1_700_000_000_000, 100, 0).unwrap();
         assert_eq!(rows.len(), 1);
     }
 
@@ -623,7 +627,7 @@ mod tests {
             .unwrap();
         // Move card1 to same deck (no-op but exercises the path).
         s.move_cards_to_deck(&[card1], new_deck).unwrap();
-        let rows = s.search_cards("is:new", 0, 1_700_000_000_000, 100).unwrap();
+        let rows = s.search_cards("is:new", 0, 1_700_000_000_000, 100, 0).unwrap();
         assert_eq!(rows[0].deck, "Default");
     }
 }
