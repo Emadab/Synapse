@@ -73,9 +73,9 @@ pub struct StudyQueue {
     pub new: Vec<i64>,
     /// Review cards due today (random order), capped by the remaining limit.
     pub review: Vec<i64>,
-    /// Soonest learning card due within the learn-ahead window, if any — shown
-    /// only when every other stream is empty.
-    pub learning_ahead: Option<i64>,
+    /// Learning cards due within the learn-ahead window, ordered by due
+    /// (soonest first) — shown only when every other stream is empty.
+    pub learning_ahead: Vec<i64>,
 }
 
 /// Transactional persistence for the collection. Implemented by `synapse-db`
@@ -181,6 +181,11 @@ pub trait Storage: Send + Sync {
     /// learning streams into one soonest-first order when studying a deck
     /// with subdecks.
     fn cards_due_ms(&self, card_ids: &[i64]) -> CoreResult<HashMap<i64, i64>>;
+
+    /// Most recent revlog time (ms) per card id, keyed by id. Cards with no
+    /// revlog entry are omitted. Used to grace-period a just-answered card out
+    /// of immediate resurfacing.
+    fn cards_last_answered(&self, card_ids: &[i64]) -> CoreResult<HashMap<i64, i64>>;
 
     /// `(new_per_day, rev_per_day)` from the deck config's JSON.
     fn deck_limits(&self, config_id: i64) -> CoreResult<(u32, u32)>;

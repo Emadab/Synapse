@@ -22,6 +22,11 @@ use crate::undo::UndoLog;
 
 const MS_PER_DAY: i64 = 86_400_000;
 
+/// Minimum time a just-answered card is kept out of resurfacing, in ms.
+/// Matches the shortest default learning step, so a card never reappears
+/// sub-minute purely because it was the only thing left to show.
+const GRACE_MS: i64 = 60_000;
+
 /// Proportional-merge decision for interleaving new and review cards: pick a new
 /// card when its stream is no further ahead (by fraction completed) than the
 /// review stream. `*_done` are today's studied counts; `*_remaining` are the
@@ -315,20 +320,44 @@ impl Collection {
             learning_ahead.extend(queue.learning_ahead);
         }
 
-        // 1. Learning due now — soonest first across the whole subtree. A
-        //    single deck's queue is already sorted by due; merging several
-        //    needs an explicit due lookup.
-        if !learning.is_empty() {
-            let id = if subtree.len() == 1 {
-                learning[0]
-            } else {
-                let due = self.storage.cards_due_ms(&learning)?;
-                *learning
+        // A just-answered card must not resurface immediately — but only while
+        // some other card can be shown instead. Look up last-answered times
+        // once for every candidate that could be affected (due-now learning
+        // cards plus learn-ahead candidates) and treat anything answered within
+        // `GRACE_MS` as deferred, not blocked.
+        let grace_candidates: Vec<i64> = learning
+            .iter()
+            .chain(learning_ahead.iter())
+            .copied()
+            .collect();
+        let last_answered = self.storage.cards_last_answered(&grace_candidates)?;
+        let in_grace = |id: &i64| {
+            last_answered
+                .get(id)
+                .is_some_and(|&last| now_ms - last < GRACE_MS)
+        };
+
+        // 1. Learning due now — soonest first across the whole subtree,
+        //    skipping cards still in grace as long as another due-now card
+        //    isn't. A single deck's queue is already sorted by due; merging
+        //    several needs an explicit due lookup.
+        let due_ms = if subtree.len() == 1 {
+            None
+        } else {
+            Some(self.storage.cards_due_ms(&learning)?)
+        };
+        let soonest_due = |ids: &[i64]| -> Option<i64> {
+            match &due_ms {
+                Some(due) => ids
                     .iter()
                     .min_by_key(|id| due.get(id).copied().unwrap_or(i64::MAX))
-                    .unwrap()
-            };
-            return Ok(Some(id));
+                    .copied(),
+                None => ids.first().copied(),
+            }
+        };
+        let learning_ready: Vec<i64> = learning.iter().copied().filter(|id| !in_grace(id)).collect();
+        if !learning_ready.is_empty() {
+            return Ok(soonest_due(&learning_ready));
         }
 
         // 2. Proportional interleave of new vs review. Today's studied counts
@@ -340,7 +369,7 @@ impl Collection {
         let next_review = review.first().copied();
         match (next_new, next_review) {
             (Some(n), Some(r)) => {
-                let today_start_ms = self.created_ms + i64::from(today) * MS_PER_DAY;
+                let today_start_ms = self.today_start_ms();
                 let all_studied = self.storage.all_today_studied(today_start_ms)?;
                 let (new_done, rev_done) = subtree.iter().fold((0u32, 0u32), |(nd, rd), id| {
                     let (n2, r2) = all_studied.get(id).copied().unwrap_or((0, 0));
@@ -352,18 +381,28 @@ impl Collection {
             }
             (Some(n), None) => Ok(Some(n)),
             (None, Some(r)) => Ok(Some(r)),
-            // 3. Nothing due now — fall back to the soonest learn-ahead card.
+            // 3. Nothing else due — fall back to the soonest learn-ahead card
+            //    (or a due-now card deferred above for being in grace),
+            //    preferring one that's out of grace. If every candidate is
+            //    still in grace, it's the only thing left to show, so show it
+            //    anyway rather than dead-ending the session.
             (None, None) => {
-                if learning_ahead.is_empty() {
-                    Ok(None)
-                } else if subtree.len() == 1 {
-                    Ok(learning_ahead.first().copied())
-                } else {
-                    let due = self.storage.cards_due_ms(&learning_ahead)?;
-                    Ok(learning_ahead
-                        .into_iter()
-                        .min_by_key(|id| due.get(id).copied().unwrap_or(i64::MAX)))
+                let fallback: Vec<i64> = learning_ahead
+                    .iter()
+                    .chain(learning.iter())
+                    .copied()
+                    .collect();
+                if fallback.is_empty() {
+                    return Ok(None);
                 }
+                let due = self.storage.cards_due_ms(&fallback)?;
+                let pick_soonest = |ids: &[i64]| -> Option<i64> {
+                    ids.iter()
+                        .copied()
+                        .min_by_key(|id| due.get(id).copied().unwrap_or(i64::MAX))
+                };
+                let ready: Vec<i64> = fallback.iter().copied().filter(|id| !in_grace(id)).collect();
+                Ok(pick_soonest(&ready).or_else(|| pick_soonest(&fallback)))
             }
         }
     }
@@ -1140,6 +1179,7 @@ mod tests {
         queues: Mutex<std::collections::HashMap<i64, crate::ports::StudyQueue>>,
         due_ms: Mutex<std::collections::HashMap<i64, i64>>,
         due_counts: Mutex<std::collections::HashMap<i64, (u32, u32, u32)>>,
+        last_answered: Mutex<std::collections::HashMap<i64, i64>>,
     }
 
     impl FakeStorage {
@@ -1301,6 +1341,16 @@ mod tests {
             Ok(card_ids
                 .iter()
                 .filter_map(|id| due.get(id).map(|&ms| (*id, ms)))
+                .collect())
+        }
+        fn cards_last_answered(
+            &self,
+            card_ids: &[i64],
+        ) -> CoreResult<std::collections::HashMap<i64, i64>> {
+            let last = self.last_answered.lock().unwrap();
+            Ok(card_ids
+                .iter()
+                .filter_map(|id| last.get(id).map(|&ms| (*id, ms)))
                 .collect())
         }
         fn deck_limits(&self, _config_id: i64) -> CoreResult<(u32, u32)> {
@@ -1870,5 +1920,95 @@ mod tests {
 
         let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
         assert_eq!(c.next_card_id(1).unwrap(), Some(11));
+    }
+
+    #[test]
+    fn learn_ahead_skips_in_grace_card_for_a_later_one() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage.queues.lock().unwrap().insert(
+            1,
+            crate::ports::StudyQueue {
+                learning_ahead: vec![101, 102], // 101 due sooner
+                ..Default::default()
+            },
+        );
+        storage.due_ms.lock().unwrap().extend([(101, 2_000), (102, 5_000)]);
+        // 101 was just answered (in grace); 102 has never been answered.
+        storage.last_answered.lock().unwrap().insert(101, 1_000);
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        assert_eq!(c.next_card_id(1).unwrap(), Some(102));
+    }
+
+    #[test]
+    fn learn_ahead_returns_sole_candidate_even_in_grace() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage.queues.lock().unwrap().insert(
+            1,
+            crate::ports::StudyQueue {
+                learning_ahead: vec![201],
+                ..Default::default()
+            },
+        );
+        storage.last_answered.lock().unwrap().insert(201, 1_000);
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        // Grace never blocks the only card that can be shown.
+        assert_eq!(c.next_card_id(1).unwrap(), Some(201));
+    }
+
+    #[test]
+    fn learning_due_now_skips_in_grace_card_for_another_due_card() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage.queues.lock().unwrap().insert(
+            1,
+            crate::ports::StudyQueue {
+                learning: vec![301, 302],
+                ..Default::default()
+            },
+        );
+        storage.last_answered.lock().unwrap().insert(301, 1_000);
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        assert_eq!(c.next_card_id(1).unwrap(), Some(302));
+    }
+
+    #[test]
+    fn learning_due_now_in_grace_defers_to_new_card() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage.queues.lock().unwrap().insert(
+            1,
+            crate::ports::StudyQueue {
+                learning: vec![301],
+                new: vec![11],
+                ..Default::default()
+            },
+        );
+        storage.last_answered.lock().unwrap().insert(301, 1_000);
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        assert_eq!(c.next_card_id(1).unwrap(), Some(11));
+    }
+
+    #[test]
+    fn learning_due_now_in_grace_is_shown_when_it_is_the_only_card() {
+        let storage = FakeStorage::default();
+        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage.queues.lock().unwrap().insert(
+            1,
+            crate::ports::StudyQueue {
+                learning: vec![301],
+                ..Default::default()
+            },
+        );
+        storage.last_answered.lock().unwrap().insert(301, 1_000);
+
+        let c = Collection::new(Box::new(storage), Arc::new(FixedClock(1_000)));
+        // Sole card in the whole deck: grace must not dead-end the session.
+        assert_eq!(c.next_card_id(1).unwrap(), Some(301));
     }
 }

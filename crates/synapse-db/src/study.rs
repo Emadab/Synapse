@@ -417,16 +417,21 @@ pub fn study_queue(
             .map_err(err)?;
     }
 
-    // 4. Learn-ahead fallback — the soonest learning card due before midnight.
-    //    Shown immediately when nothing else is due so the user can finish the day.
-    let learning_ahead: Option<i64> = conn
-        .query_row(
+    // 4. Learn-ahead fallback — learning cards due before midnight, soonest
+    //    first. Shown immediately when nothing else is due so the user can
+    //    finish the day. Kept as a list (not just the soonest) so the caller
+    //    can skip a just-answered card still inside its grace period in favor
+    //    of the next-soonest one.
+    let mut stmt = conn
+        .prepare(
             "SELECT id FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
-             AND type IN (1, 3) AND due > ?2 AND due <= ?3 ORDER BY due LIMIT 1",
-            params![deck_id, now_ms, today_end_ms],
-            |r| r.get(0),
+             AND type IN (1, 3) AND due > ?2 AND due <= ?3 ORDER BY due",
         )
-        .optional()
+        .map_err(err)?;
+    let learning_ahead: Vec<i64> = stmt
+        .query_map(params![deck_id, now_ms, today_end_ms], |r| r.get(0))
+        .map_err(err)?
+        .collect::<rusqlite::Result<_>>()
         .map_err(err)?;
 
     Ok(synapse_core::ports::StudyQueue {
@@ -552,6 +557,31 @@ pub fn cards_due_ms(conn: &Connection, card_ids: &[i64]) -> CoreResult<HashMap<i
     for row in rows {
         let (id, due) = row.map_err(err)?;
         map.insert(id, due);
+    }
+    Ok(map)
+}
+
+/// Most recent revlog time (ms) per card id, keyed by id. `revlog.id` is the
+/// epoch-ms answer time (see `apply_answer`), so `MAX(id)` is the last-answered
+/// time. Cards with no revlog row are omitted from the map.
+pub fn cards_last_answered(conn: &Connection, card_ids: &[i64]) -> CoreResult<HashMap<i64, i64>> {
+    if card_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let json = serde_json::to_string(card_ids).map_err(err)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT card_id, MAX(id) FROM revlog
+             WHERE card_id IN (SELECT value FROM json_each(?1)) GROUP BY card_id",
+        )
+        .map_err(err)?;
+    let mut map = HashMap::new();
+    let rows = stmt
+        .query_map([json], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
+        .map_err(err)?;
+    for row in rows {
+        let (id, last_ms) = row.map_err(err)?;
+        map.insert(id, last_ms);
     }
     Ok(map)
 }
@@ -1003,13 +1033,64 @@ mod tests {
         assert!(q.learning.is_empty());
         assert_eq!(q.new, vec![2]);
         // Due today → eligible as learn-ahead fallback.
-        assert_eq!(q.learning_ahead, Some(1));
+        assert_eq!(q.learning_ahead, vec![1]);
 
         // Badge count includes the learning card (due today, even though not due yet).
         let (new, learning, review) = storage
             .count_due_by_type(1, 0, NOW, TODAY_END, 20, 200)
             .unwrap();
         assert_eq!((new, learning, review), (1, 1, 0));
+    }
+
+    #[test]
+    fn learn_ahead_returns_all_candidates_ordered_by_due() {
+        let storage = SqliteStorage::open_in_memory().unwrap();
+        storage.ensure_collection(NOW).unwrap();
+        storage
+            .import(&model_with_cards(vec![
+                card(1, 1, 1, NOW + 20 * MIN_MS), // learning, due later
+                card(2, 1, 1, NOW + 5 * MIN_MS),  // learning, due sooner
+            ]))
+            .unwrap();
+
+        let q = storage.study_queue(1, 0, NOW, TODAY_END, 20, 200).unwrap();
+        assert_eq!(q.learning_ahead, vec![2, 1]);
+    }
+
+    #[test]
+    fn cards_last_answered_reports_max_revlog_time_and_omits_unanswered() {
+        let storage = SqliteStorage::open_in_memory().unwrap();
+        storage.ensure_collection(NOW).unwrap();
+        storage
+            .import(&model_with_cards(vec![
+                card(1, 0, 0, 0), // never answered
+                card(2, 0, 0, 0),
+            ]))
+            .unwrap();
+
+        let next = CardState {
+            phase: CardPhase::Learning,
+            steps_remaining: 1,
+            ..CardState::new(2500)
+        };
+        for (log_id, ease) in [(NOW, 1), (NOW + MIN_MS, 1)] {
+            let log = Revlog {
+                id: log_id,
+                card_id: 2,
+                usn: -1,
+                ease,
+                interval: 0,
+                last_interval: 0,
+                ease_factor: 2500,
+                taken_ms: 0,
+                review_kind: 0,
+            };
+            storage.apply_answer(2, &next, NOW + MIN_MS, &log).unwrap();
+        }
+
+        let last = storage.cards_last_answered(&[1, 2]).unwrap();
+        assert_eq!(last.get(&2), Some(&(NOW + MIN_MS)));
+        assert!(!last.contains_key(&1));
     }
 
     #[test]
@@ -1073,7 +1154,7 @@ mod tests {
 
         let q = storage.study_queue(1, 0, NOW, TODAY_END, 20, 200).unwrap();
         assert!(q.learning.is_empty() && q.new.is_empty() && q.review.is_empty());
-        assert_eq!(q.learning_ahead, None);
+        assert!(q.learning_ahead.is_empty());
     }
 
     // ── Performance regression guards ─────────────────────────────────────────
