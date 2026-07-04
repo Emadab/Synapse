@@ -39,7 +39,12 @@ const FLAG_COLORS: Record<number, string> = {
 export function StudySessionScreen() {
   const { deckId } = useParams({ from: "/study/$deckId" });
   const navigate = useNavigate();
-  return <Session deckId={deckId} onExit={() => void navigate({ to: "/" })} />;
+  const queryClient = useQueryClient();
+  const onExit = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.decks });
+    void navigate({ to: "/" });
+  };
+  return <Session deckId={deckId} onExit={onExit} />;
 }
 
 function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
