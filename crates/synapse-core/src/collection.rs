@@ -398,14 +398,17 @@ impl Collection {
     }
 
     /// Temporarily raise today's new-card limit for `deck_id` by `extra_new`
-    /// cards. Only applies for today (`Collection::today()`); it lapses on its
-    /// own at the next day rollover since the override is keyed by day number.
+    /// cards, stacking on top of any earlier increase made today. Only
+    /// applies for today (`Collection::today()`); it lapses on its own at the
+    /// next day rollover since the override is keyed by day number.
     pub fn increase_today_new_limit(&self, deck_id: i64, extra_new: u32) -> CoreResult<()> {
         self.storage
             .deck_by_id(deck_id)?
             .ok_or_else(|| CoreError::NotFound(format!("deck {deck_id}")))?;
+        let today = self.today();
+        let current = self.storage.day_extra_new(deck_id, today)?;
         self.storage
-            .set_day_extra_new(deck_id, self.today(), extra_new)?;
+            .set_day_extra_new(deck_id, today, current + extra_new)?;
         self.events.emit(DomainEvent::DeckChanged { deck_id });
         Ok(())
     }
