@@ -386,12 +386,17 @@ pub fn study_queue(
     // 2. New — frequency rank (`due`) with a small random jitter, so the deck's
     //    ordering shows through without being fully predictable. `RANDOM() &
     //    0x7FFF_FFFF` keeps a non-negative key (avoids ABS(i64::MIN) overflow).
+    //    `due` on new cards is the *import-time* counter, which can be a global
+    //    (cross-deck) sequence rather than starting near 0 for this deck — so we
+    //    rank within the deck's own `due` ordering instead of using the raw value.
     let mut new: Vec<i64> = Vec::new();
     if new_limit > 0 {
         let mut stmt = conn
             .prepare(
-                "SELECT id FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3)
-                 AND type = 0 ORDER BY due + ((RANDOM() & 2147483647) % ?3), id LIMIT ?2",
+                "SELECT id FROM (
+                     SELECT id, ROW_NUMBER() OVER (ORDER BY due) AS rank
+                     FROM cards WHERE deck_id = ?1 AND queue NOT IN (-1,-2,-3) AND type = 0
+                 ) ORDER BY rank + ((RANDOM() & 2147483647) % ?3), id LIMIT ?2",
             )
             .map_err(err)?;
         new = stmt
