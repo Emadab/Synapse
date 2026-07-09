@@ -21,6 +21,67 @@ const KATEX_OPTIONS = {
 let sharedBaseSheet: CSSStyleSheet | null = null;
 let sharedKatexSheet: CSSStyleSheet | null = null;
 
+const INLINE_EVENT_ATTR = /^on([a-z]+)$/;
+
+/**
+ * Anki templates assume `document.getElementById`/`querySelector` reach the
+ * whole (single-card) page. Here each face lives in its own shadow root, so
+ * while a template's script/onclick runs we shadow those lookups to resolve
+ * within this face first, falling back to the real document.
+ */
+function withCardDocumentScope<T>(container: HTMLElement, shadowRoot: ShadowRoot, run: () => T): T {
+  const realGetById = document.getElementById.bind(document);
+  const realQuerySelector = document.querySelector.bind(document);
+  const realQuerySelectorAll = document.querySelectorAll.bind(document);
+  (document as Document).getElementById = (id: string) =>
+    shadowRoot.getElementById(id) ?? realGetById(id);
+  (document as Document).querySelector = ((selector: string) =>
+    container.querySelector(selector) ?? realQuerySelector(selector)) as Document["querySelector"];
+  (document as Document).querySelectorAll = ((selector: string) => {
+    const local = container.querySelectorAll(selector);
+    return local.length > 0 ? local : realQuerySelectorAll(selector);
+  }) as Document["querySelectorAll"];
+  try {
+    return run();
+  } finally {
+    document.getElementById = realGetById;
+    document.querySelector = realQuerySelector;
+    document.querySelectorAll = realQuerySelectorAll;
+  }
+}
+
+/**
+ * Runs a card template's `<script>` blocks (never auto-executed by
+ * `innerHTML`) and rewires inline `onclick`-style attributes so their
+ * handlers see this face's shadow content via `withCardDocumentScope`.
+ */
+function activateCardScripts(container: HTMLElement, shadowRoot: ShadowRoot): void {
+  withCardDocumentScope(container, shadowRoot, () => {
+    container.querySelectorAll("script").forEach((old) => {
+      const replacement = document.createElement("script");
+      for (const attr of Array.from(old.attributes)) {
+        replacement.setAttribute(attr.name, attr.value);
+      }
+      replacement.textContent = old.textContent;
+      old.replaceWith(replacement);
+    });
+  });
+
+  container.querySelectorAll<HTMLElement>("*").forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      const match = INLINE_EVENT_ATTR.exec(attr.name);
+      if (!match) continue;
+      const eventName = match[1];
+      const code = attr.value;
+      el.removeAttribute(attr.name);
+      const handler = new Function("event", code);
+      el.addEventListener(eventName, (event) => {
+        withCardDocumentScope(container, shadowRoot, () => handler.call(el, event));
+      });
+    }
+  });
+}
+
 function getSharedSheets(): [CSSStyleSheet, CSSStyleSheet] {
   if (!sharedBaseSheet) {
     sharedBaseSheet = new CSSStyleSheet();
@@ -69,6 +130,7 @@ export function CardFace({
 }: CardFaceProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const shadowRootRef = useRef<ShadowRoot | null>(null);
   const notetypeSheetRef = useRef<CSSStyleSheet | null>(null);
 
   // One-time shadow root + adopted stylesheets setup.
@@ -76,6 +138,7 @@ export function CardFace({
     const host = hostRef.current;
     if (!host) return;
     const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    shadowRootRef.current = shadow;
 
     let container = shadow.querySelector<HTMLDivElement>(".synapse-card-root");
     if (!container) {
@@ -110,6 +173,9 @@ export function CardFace({
     const prepared = prepareCard(html, tauri);
     container.innerHTML = prepared.html;
     onQueue?.(prepared.queue);
+
+    const shadowRoot = shadowRootRef.current;
+    if (shadowRoot) activateCardScripts(container, shadowRoot);
 
     renderMathInElement(container, KATEX_OPTIONS);
 
