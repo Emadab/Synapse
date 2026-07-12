@@ -37,10 +37,15 @@ describe("Synapse smoke", () => {
     const input = await browser.$("input[placeholder]");
     await input.waitForExist({ timeout: TIMEOUT });
     await input.setValue("E2E Test Deck");
-    await browser.keys(["Enter"]);
+
+    // Click Create directly — synthetic Enter keypresses don't reliably
+    // trigger form submit on the GTK webview used in CI.
+    const createBtn = await browser.$("button=Create");
+    await createBtn.click();
 
     // The deck now appears in the list
     const deckEntry = await browser.$("*=E2E Test Deck");
+    await deckEntry.waitForExist({ timeout: TIMEOUT });
     await expect(deckEntry).toExist();
   });
 
@@ -50,7 +55,7 @@ describe("Synapse smoke", () => {
     await addLink.waitForExist({ timeout: TIMEOUT });
     await addLink.click();
 
-    const heading = await browser.$("h1=Add note");
+    const heading = await browser.$("h1=Add Note");
     await heading.waitForExist({ timeout: TIMEOUT });
   });
 
