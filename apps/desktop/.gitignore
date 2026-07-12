@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Impeccable design skill local state (live-mode config, design sidecar)
+.impeccable/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

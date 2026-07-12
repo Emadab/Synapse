@@ -29,7 +29,6 @@ import { useUi } from "@/stores/ui";
 import { speak, cancelSpeech } from "@/lib/tts";
 
 const FLAG_COLORS: Record<number, string> = {
-  0: "text-muted-foreground",
   1: "text-red-500",
   2: "text-orange-500",
   3: "text-green-500",
@@ -85,20 +84,44 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
     },
   });
 
+  const [actionToast, setActionToast] = useState<{ message: string; onUndo?: () => void } | null>(
+    null,
+  );
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const showActionToast = useCallback((message: string, onUndo?: () => void) => {
+    clearTimeout(toastTimerRef.current);
+    setActionToast({ message, onUndo });
+    toastTimerRef.current = setTimeout(() => setActionToast(null), 3000);
+  }, []);
+
+  const unsuspendMut = useMutation({
+    mutationFn: (cardId: number) => ipc.unsuspendCards([cardId]),
+    onSuccess: () => {
+      setActionToast(null);
+      void queryClient.refetchQueries({ queryKey: queryKeys.queue(String(deckId)) });
+    },
+  });
+
   const suspendMut = useMutation({
     mutationFn: (cardId: number) => ipc.suspendCards([cardId]),
-    onSuccess: () =>
+    onSuccess: (_data, cardId) => {
+      showActionToast("Card suspended", () => unsuspendMut.mutate(cardId));
       void queryClient
         .refetchQueries({ queryKey: queryKeys.queue(String(deckId)) })
-        .then(() => setRevealed(false)),
+        .then(() => setRevealed(false));
+    },
   });
 
   const buryMut = useMutation({
     mutationFn: (cardId: number) => ipc.buryCards([cardId]),
-    onSuccess: () =>
+    onSuccess: () => {
+      // No per-card unbury IPC command exists yet (only whole-deck unbury) —
+      // confirm the action without offering undo until one is added.
+      showActionToast("Card buried");
       void queryClient
         .refetchQueries({ queryKey: queryKeys.queue(String(deckId)) })
-        .then(() => setRevealed(false)),
+        .then(() => setRevealed(false));
+    },
   });
 
   const flagMut = useMutation({
@@ -455,7 +478,11 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                   className="h-7 gap-1.5 px-2 text-xs"
                   disabled={actionBusy}
                   onClick={() => setFlagMenuOpen((o) => !o)}
-                  title="Set flag"
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    flagMut.mutate({ cardId: card.card_id, flag: 0 });
+                  }}
+                  title="Set flag (right-click to clear)"
                 >
                   <Flag className="size-3.5 text-muted-foreground" />
                   <span className="text-muted-foreground">Flag</span>
@@ -471,11 +498,11 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                       aria-label="Set flag"
                       className="glass-panel absolute bottom-full right-0 mb-1 flex overflow-hidden rounded-lg border shadow-md"
                     >
-                      {[0, 1, 2, 3, 4].map((f) => (
+                      {[1, 2, 3, 4].map((f) => (
                         <button
                           key={f}
                           role="menuitem"
-                          aria-label={f === 0 ? "Remove flag" : `Flag ${f}`}
+                          aria-label={`Flag ${f}`}
                           className={`p-2 hover:bg-accent ${FLAG_COLORS[f]}`}
                           onClick={() => flagMut.mutate({ cardId: card.card_id, flag: f })}
                         >
@@ -541,6 +568,29 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
           />
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {actionToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: dur.fast, ease }}
+            className="glass-panel absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg border px-3 py-2 text-sm shadow-md"
+          >
+            <span>{actionToast.message}</span>
+            {actionToast.onUndo && (
+              <button
+                type="button"
+                className="font-medium text-primary hover:underline"
+                onClick={actionToast.onUndo}
+              >
+                Undo
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -549,7 +599,7 @@ type AnswerBtnDef = {
   label: string;
   hint: string;
   hotkey: string;
-  variant: "default" | "secondary" | "outline" | "destructive";
+  variant: "again" | "hard" | "good" | "easy";
   rating: RatingValue;
 };
 
@@ -566,21 +616,9 @@ function getAnswerButtons(card: {
 
   if (isFsrsReview) {
     return [
-      {
-        label: "Forgot",
-        hint: card.again,
-        hotkey: "1",
-        variant: "destructive",
-        rating: Rating.Again,
-      },
-      {
-        label: "Remembered",
-        hint: card.good,
-        hotkey: "2",
-        variant: "default",
-        rating: Rating.Good,
-      },
-      { label: "Easy", hint: card.easy, hotkey: "3", variant: "outline", rating: Rating.Easy },
+      { label: "Forgot", hint: card.again, hotkey: "1", variant: "again", rating: Rating.Again },
+      { label: "Remembered", hint: card.good, hotkey: "2", variant: "good", rating: Rating.Good },
+      { label: "Easy", hint: card.easy, hotkey: "3", variant: "easy", rating: Rating.Easy },
     ];
   }
 
@@ -590,18 +628,18 @@ function getAnswerButtons(card: {
       label: isFsrs ? "Forgot" : "Again",
       hint: card.again,
       hotkey: "1",
-      variant: "destructive",
+      variant: "again",
       rating: Rating.Again,
     },
-    { label: "Hard", hint: card.hard, hotkey: "2", variant: "secondary", rating: Rating.Hard },
+    { label: "Hard", hint: card.hard, hotkey: "2", variant: "hard", rating: Rating.Hard },
     {
       label: isFsrs ? "Remembered" : "Good",
       hint: card.good,
       hotkey: "3",
-      variant: "default",
+      variant: "good",
       rating: Rating.Good,
     },
-    { label: "Easy", hint: card.easy, hotkey: "4", variant: "outline", rating: Rating.Easy },
+    { label: "Easy", hint: card.easy, hotkey: "4", variant: "easy", rating: Rating.Easy },
   ];
 }
 
@@ -609,7 +647,7 @@ function AnswerButton(props: {
   label: string;
   hint: string;
   hotkey: string;
-  variant: "default" | "secondary" | "outline" | "destructive";
+  variant: "again" | "hard" | "good" | "easy";
   onClick: () => void;
 }) {
   return (

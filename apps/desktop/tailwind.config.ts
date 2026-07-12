@@ -43,6 +43,10 @@ export default {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        again: "hsl(var(--again))",
+        hard: "hsl(var(--hard))",
+        good: "hsl(var(--good))",
+        easy: "hsl(var(--easy))",
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",

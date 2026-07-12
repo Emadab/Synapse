@@ -12,6 +12,10 @@ const buttonVariants = cva(
         outline: "border border-border bg-background hover:bg-accent hover:text-accent-foreground",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        again: "bg-again text-white hover:bg-again/90",
+        hard: "bg-hard text-white hover:bg-hard/90",
+        good: "bg-good text-white hover:bg-good/90",
+        easy: "bg-easy text-white hover:bg-easy/90",
       },
       size: {
         sm: "h-8 px-3",

@@ -27,6 +27,12 @@
     --ring: 226 50% 52%;
     --radius: 0.75rem;
 
+    /* Review-state semantic colors — fixed across light/dark, never reassigned. */
+    --again: 0 84% 60%;
+    --hard: 38 92% 50%;
+    --good: 142 71% 45%;
+    --easy: 217 91% 60%;
+
     --sidebar: 220 20% 97.5%;
     --sidebar-foreground: 224 16% 28%;
     --sidebar-accent: 220 14% 94%;

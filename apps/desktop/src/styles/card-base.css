@@ -68,7 +68,7 @@
 }
 
 .card .typeGood {
-  color: #2fa84f;
+  color: hsl(var(--good));
 }
 
 .card .typeBad {
