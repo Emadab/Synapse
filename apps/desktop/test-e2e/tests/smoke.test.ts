@@ -43,8 +43,10 @@ describe("Synapse smoke", () => {
     const createBtn = await browser.$("button=Create");
     await createBtn.click();
 
-    // The deck now appears in the list
-    const deckEntry = await browser.$("*=E2E Test Deck");
+    // The deck now appears in the list. Bare `*=` only matches <a> tags
+    // (WebdriverIO's "partial link text" strategy) — the deck name renders
+    // in a <span>, so scope the text match to that tag.
+    const deckEntry = await browser.$("span*=E2E Test Deck");
     await deckEntry.waitForExist({ timeout: TIMEOUT });
     await expect(deckEntry).toExist();
   });
