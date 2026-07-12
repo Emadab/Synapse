@@ -92,6 +92,10 @@ jobs:
         uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Same ignores as ci.yml: quick-xml quadratic-time/unbounded-alloc
+          # advisories, pulled in transitively via tauri-utils -> plist
+          # (macOS bundling only, never parses untrusted input at runtime).
+          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
       - run: pnpm install --frozen-lockfile
       - name: npm audit
         run: pnpm audit --audit-level=high
