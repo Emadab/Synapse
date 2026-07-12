@@ -275,6 +275,7 @@ pub trait Storage: Send + Sync {
         deck_ids: Option<&[i64]>,
         days: Option<u32>,
         tz_offset_minutes: i32,
+        rollover_hour: u8,
         fsrs_weights: &[f64; 21],
         retention_goal_pct: f64,
         today: i32,

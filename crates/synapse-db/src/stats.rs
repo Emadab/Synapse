@@ -1,11 +1,10 @@
 //! Aggregate statistics over `revlog` and `cards`, for the dashboards.
 //!
-//! Day bucketing is collection-relative (`(id - created_ms) / MS_PER_DAY`),
-//! matching the scheduler's notion of "today" (`Collection::today()`), so the
-//! heatmap/streaks/weekly buckets line up with due-date math elsewhere. The
-//! hourly breakdown is the only aggregate shifted into the caller's local
-//! timezone (`tz_offset_minutes`), since hour-of-day only makes sense in local
-//! time. Deck ids passed in are always resolved by `Collection` from our own
+//! Day bucketing shifts each timestamp by `tz_offset_minutes` and
+//! `rollover_hour` before dividing by `MS_PER_DAY`, matching the scheduler's
+//! notion of "today" (`Collection::local_day_index` /  `Collection::today()`),
+//! so the heatmap/streaks/weekly buckets line up with due-date math elsewhere.
+//! Deck ids passed in are always resolved by `Collection` from our own
 //! `list_decks()` (never raw user text), so they're interpolated directly into
 //! the SQL rather than bound as params — simpler than a dynamic `IN (?,?,..)`
 //! list for no injection risk.
@@ -52,9 +51,17 @@ fn deck_clause(alias: &str, deck_ids: Option<&[i64]>) -> String {
 /// A first-answer-per-card-per-day subquery: true retention counts only the
 /// first time a card was answered on a given collection-day, so same-day
 /// re-reviews (cramming, "Again" retries) don't skew the pass rate.
-fn first_answer_clause(created_ms: i64) -> String {
+fn first_answer_clause(day_expr: &str) -> String {
+    format!("r.id IN (SELECT MIN(id) FROM revlog GROUP BY card_id, {day_expr})")
+}
+
+/// The day-index expression for a revlog row's `id` (ms timestamp), shifted
+/// into local/rollover-aligned days the same way `Collection::local_day_index`
+/// does, so day boundaries here match the scheduler's notion of "today".
+fn day_expr(id_col: &str, tz_off_ms: i64, rollover_ms: i64, created_ms: i64) -> String {
     format!(
-        "r.id IN (SELECT MIN(id) FROM revlog GROUP BY card_id, (id - {created_ms}) / {MS_PER_DAY})"
+        "(({id_col} + {tz_off_ms} - {rollover_ms}) / {MS_PER_DAY}) - \
+         (({created_ms} + {tz_off_ms} - {rollover_ms}) / {MS_PER_DAY})"
     )
 }
 
@@ -64,6 +71,7 @@ pub fn stats(
     deck_ids: Option<&[i64]>,
     days: Option<u32>,
     tz_offset_minutes: i32,
+    rollover_hour: u8,
     fsrs_weights: &[f64; 21],
     retention_goal_pct: f64,
     today: i32,
@@ -83,13 +91,16 @@ pub fn stats(
         Some(c) => format!("r.id >= {c}"),
         None => "1=1".to_string(),
     };
-    let first_answer = first_answer_clause(created_ms);
     let tz_off_ms = i64::from(tz_offset_minutes) * 60_000;
+    let rollover_ms = i64::from(rollover_hour) * 3_600_000;
+    let day = day_expr("r.id", tz_off_ms, rollover_ms, created_ms);
+    let first_answer =
+        first_answer_clause(&day_expr("id", tz_off_ms, rollover_ms, created_ms));
 
-    // Reviews per collection-relative day (all time, deck-filtered) — heatmap + streaks.
+    // Reviews per local/rollover-aligned day (all time, deck-filtered) — heatmap + streaks.
     {
         let sql = format!(
-            "SELECT (r.id - {created_ms}) / {MS_PER_DAY} AS day, COUNT(*)
+            "SELECT {day} AS day, COUNT(*)
              FROM revlog r JOIN cards c ON c.id = r.card_id
              WHERE {deck_c} GROUP BY day ORDER BY day"
         );
@@ -120,7 +131,7 @@ pub fn stats(
     }
     {
         let sql = format!(
-            "SELECT COUNT(DISTINCT (r.id - {created_ms}) / {MS_PER_DAY})
+            "SELECT COUNT(DISTINCT {day})
              FROM revlog r JOIN cards c ON c.id = r.card_id
              WHERE {deck_c} AND {range_clause}"
         );
@@ -147,7 +158,7 @@ pub fn stats(
     // Retention weekly, split young/mature (range-scoped, true retention).
     {
         let sql = format!(
-            "SELECT ((r.id - {created_ms}) / {MS_PER_DAY}) / 7 AS wk,
+            "SELECT ({day}) / 7 AS wk,
                     SUM(CASE WHEN r.last_interval BETWEEN 1 AND 20 THEN 1 ELSE 0 END),
                     SUM(CASE WHEN r.last_interval BETWEEN 1 AND 20 AND r.ease > 1 THEN 1 ELSE 0 END),
                     SUM(CASE WHEN r.last_interval >= 21 THEN 1 ELSE 0 END),
@@ -336,7 +347,7 @@ pub fn stats(
     }
 
     // Per-deck rollup table (always all decks, independent of the `deck_ids` filter).
-    stats.deck_stats = deck_stats(conn, today, now_ms, created_ms)?;
+    stats.deck_stats = deck_stats(conn, today, now_ms, created_ms, tz_off_ms, rollover_ms)?;
 
     Ok(stats)
 }
@@ -346,6 +357,8 @@ fn deck_stats(
     today: i32,
     now_ms: i64,
     created_ms: i64,
+    tz_off_ms: i64,
+    rollover_ms: i64,
 ) -> CoreResult<Vec<DeckStat>> {
     use std::collections::HashMap;
 
@@ -429,7 +442,8 @@ fn deck_stats(
     {
         let retention_cutoff = now_ms - RETENTION_30D_MS;
         let reviews_cutoff = now_ms - REVIEWS_7D_MS;
-        let first_answer = first_answer_clause(created_ms);
+        let first_answer =
+            first_answer_clause(&day_expr("id", tz_off_ms, rollover_ms, created_ms));
         let sql = format!(
             "SELECT c.deck_id,
                     SUM(CASE WHEN r.id >= {reviews_cutoff} THEN 1 ELSE 0 END),
@@ -526,6 +540,7 @@ pub fn revlogs_for_optimize(conn: &Connection, deck_id: Option<i64>) -> CoreResu
 #[cfg(test)]
 mod tests {
     use crate::storage::SqliteStorage;
+    use synapse_core::model::Revlog;
     use synapse_core::ports::Storage;
     use synapse_core::scheduling::FSRS6_DEFAULT_WEIGHTS;
 
@@ -616,7 +631,7 @@ mod tests {
         storage.import(&model()).unwrap();
 
         let s = storage
-            .stats(None, Some(30), 0, &FSRS6_DEFAULT_WEIGHTS, 90.0, 0, NOW, 0)
+            .stats(None, Some(30), 0, 4, &FSRS6_DEFAULT_WEIGHTS, 90.0, 0, NOW, 0)
             .unwrap();
         assert_eq!(s.total_reviews, 1);
         assert_eq!(s.studied_days, 1);
@@ -636,6 +651,7 @@ mod tests {
                 Some(&[999]),
                 None,
                 0,
+                4,
                 &FSRS6_DEFAULT_WEIGHTS,
                 90.0,
                 0,
@@ -645,5 +661,64 @@ mod tests {
             .unwrap();
         assert_eq!(s.total_reviews, 0);
         assert_eq!(s.new_count, 0);
+    }
+
+    /// Two reviews that straddle a naive collection-relative UTC day boundary
+    /// but fall on the same local/rollover-aligned day must land in one
+    /// `DayCount` bucket, not two — reproduces the gapped-streak bug where a
+    /// single studied day got split by ignoring `tz_offset_minutes`/
+    /// `rollover_hour`.
+    #[test]
+    fn day_bucketing_respects_tz_and_rollover() {
+        let created_ms = 8_000_000_000;
+        let tz_offset_minutes = 120; // UTC+2
+        let rollover_hour = 4;
+
+        let mut m = model();
+        m.revlog = vec![
+            Revlog {
+                id: 8_604_700_000, // just before the naive UTC-relative day boundary
+                card_id: 1000,
+                usn: -1,
+                ease: 3,
+                interval: 1,
+                last_interval: 0,
+                ease_factor: 2500,
+                taken_ms: 1000,
+                review_kind: 1,
+            },
+            Revlog {
+                id: 8_604_900_000, // just after it, but same local/rollover day
+                card_id: 1001,
+                usn: -1,
+                ease: 3,
+                interval: 1,
+                last_interval: 0,
+                ease_factor: 2500,
+                taken_ms: 1000,
+                review_kind: 1,
+            },
+        ];
+
+        let storage = SqliteStorage::open_in_memory().unwrap();
+        storage.import(&m).unwrap();
+
+        let s = storage
+            .stats(
+                None,
+                None,
+                tz_offset_minutes,
+                rollover_hour,
+                &FSRS6_DEFAULT_WEIGHTS,
+                90.0,
+                0,
+                8_605_000_000,
+                created_ms,
+            )
+            .unwrap();
+
+        assert_eq!(s.reviews.len(), 1, "both reviews should share one day bucket");
+        assert_eq!(s.reviews[0].count, 2);
+        assert_eq!(s.studied_days, 1);
     }
 }
