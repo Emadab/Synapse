@@ -152,9 +152,19 @@ impl Storage for SqliteStorage {
     fn create_deck(&self, name: &str, now_ms: i64) -> CoreResult<Deck> {
         let conn = self.lock();
         let parent_id = Self::parent_id_for(&conn, name)?;
+        // Each deck gets its own options group (cloned from Default) so that
+        // per-deck limits like "new cards/day" don't silently apply to
+        // every other deck sharing config_id=1.
         conn.execute(
-            r#"INSERT INTO decks (name, parent_id, config_id, "mod", usn) VALUES (?1, ?2, 1, ?3, -1)"#,
-            params![name, parent_id, now_ms],
+            r#"INSERT INTO deck_config (name, "mod", usn, config)
+               SELECT ?1, ?2, -1, config FROM deck_config WHERE id = 1"#,
+            params![name, now_ms],
+        )
+        .map_err(storage_err)?;
+        let config_id = conn.last_insert_rowid();
+        conn.execute(
+            r#"INSERT INTO decks (name, parent_id, config_id, "mod", usn) VALUES (?1, ?2, ?3, ?4, -1)"#,
+            params![name, parent_id, config_id, now_ms],
         )
         .map_err(storage_err)?;
         let id = conn.last_insert_rowid();
@@ -937,7 +947,7 @@ mod tests {
     #[test]
     fn migrations_apply_and_seed_defaults() {
         let s = storage();
-        assert_eq!(s.schema_version().unwrap(), 2);
+        assert_eq!(s.schema_version().unwrap(), 3);
         // The seeded Default deck is present.
         let decks = s.list_decks().unwrap();
         assert_eq!(decks.len(), 1);

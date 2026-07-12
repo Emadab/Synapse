@@ -159,6 +159,20 @@ pub const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (deck_id, day)
     );
     "#,
+    // v2 -> v3: every deck used to share the "Default" options group
+    // (config_id=1), so editing one deck's new-cards/day silently changed
+    // it for every other deck too. Give each existing non-Default deck its
+    // own cloned config group; new decks already get one in create_deck().
+    r#"
+    INSERT INTO deck_config (name, "mod", usn, config)
+    SELECT d.name, d."mod", -1, dc.config
+    FROM decks d JOIN deck_config dc ON dc.id = d.config_id
+    WHERE d.id <> 1;
+
+    UPDATE decks
+    SET config_id = (SELECT id FROM deck_config WHERE deck_config.name = decks.name AND deck_config.id <> 1)
+    WHERE decks.id <> 1;
+    "#,
 ];
 
 /// Grave record types (matches Anki: card, note, deck).

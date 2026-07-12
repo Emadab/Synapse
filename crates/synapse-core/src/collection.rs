@@ -1197,7 +1197,7 @@ mod tests {
                 id: self.new_id(),
                 name: name.to_string(),
                 parent_id: None,
-                config_id: 1,
+                config_id: self.new_id(),
                 mod_ms: now_ms,
                 usn: -1,
                 collapsed: false,
