@@ -158,6 +158,18 @@
     perspective: 1200px;
   }
 
+  /* Browser default focus ring (often stark white/black) on any focusable
+     element that doesn't set its own focus-visible ring. */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
   /* TipTap field editor content. */
   .synapse-prose p {
     @apply my-1;
