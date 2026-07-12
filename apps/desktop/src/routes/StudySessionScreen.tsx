@@ -320,7 +320,7 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: fadeDuration, ease }}
-          className={`relative z-10 mx-auto flex w-full flex-1 flex-col px-6 py-8 ${focusMode ? "max-w-3xl" : "max-w-2xl"}`}
+          className={`relative z-10 mx-auto flex w-full min-h-0 flex-1 flex-col px-3 py-4 sm:px-6 sm:py-8 ${focusMode ? "max-w-3xl" : "max-w-2xl"}`}
         >
           {/* Card — 3D flip (or plain div for reduced-motion) */}
           {prefersReduced ? (
@@ -330,13 +330,13 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
               css={card.css}
               tauri={tauri}
               night={night}
-              className="synapse-card flex-1 rounded-xl border border-border p-8 overflow-auto"
+              className="synapse-card min-h-0 flex-1 rounded-xl border border-border p-4 sm:p-8 overflow-auto"
               onQueue={revealed ? setBackQueue : setFrontQueue}
               onTypedInput={!revealed ? setTypedAnswer : undefined}
               typedAnswer={revealed ? typedAnswer : undefined}
             />
           ) : (
-            <div className="synapse-flip relative flex-1">
+            <div className="synapse-flip relative min-h-0 flex-1">
               <motion.div
                 className="absolute inset-0"
                 style={{ transformStyle: "preserve-3d" }}
@@ -349,7 +349,7 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                   css={card.css}
                   tauri={tauri}
                   night={night}
-                  className="synapse-card absolute inset-0 rounded-xl border border-border p-8 overflow-auto"
+                  className="synapse-card absolute inset-0 rounded-xl border border-border p-4 sm:p-8 overflow-auto"
                   style={{ backfaceVisibility: "hidden" }}
                   onQueue={setFrontQueue}
                   onTypedInput={setTypedAnswer}
@@ -360,7 +360,7 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
                   css={card.css}
                   tauri={tauri}
                   night={night}
-                  className="synapse-card absolute inset-0 rounded-xl border border-border p-8 overflow-auto"
+                  className="synapse-card absolute inset-0 rounded-xl border border-border p-4 sm:p-8 overflow-auto"
                   style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
                   onQueue={setBackQueue}
                   typedAnswer={typedAnswer}
