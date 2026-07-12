@@ -374,6 +374,10 @@ fn deck_stats(
                     total_cards: 0,
                     due_today: 0,
                     new_count: 0,
+                    learning_count: 0,
+                    young_count: 0,
+                    mature_count: 0,
+                    suspended_count: 0,
                     retention_pct: 0.0,
                     reviews_7d: 0,
                 },
@@ -385,7 +389,11 @@ fn deck_stats(
         let sql = format!(
             "SELECT deck_id, COUNT(*),
                     SUM(CASE WHEN type = 0 AND queue >= 0 THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN type = 2 AND queue = 2 AND due <= {today} THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN type = 2 AND queue = 2 AND due <= {today} THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN type IN (1, 3) AND queue >= 0 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN type = 2 AND interval < 21 AND queue >= 0 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN type = 2 AND interval >= 21 AND queue >= 0 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN queue = -1 THEN 1 ELSE 0 END)
              FROM cards GROUP BY deck_id"
         );
         let mut stmt = conn.prepare(&sql).map_err(err)?;
@@ -396,15 +404,24 @@ fn deck_stats(
                     r.get::<_, i64>(1)? as u32,
                     r.get::<_, i64>(2)? as u32,
                     r.get::<_, i64>(3)? as u32,
+                    r.get::<_, i64>(4)? as u32,
+                    r.get::<_, i64>(5)? as u32,
+                    r.get::<_, i64>(6)? as u32,
+                    r.get::<_, i64>(7)? as u32,
                 ))
             })
             .map_err(err)?;
         for row in rows {
-            let (deck_id, total, new_count, due) = row.map_err(err)?;
+            let (deck_id, total, new_count, due, learning, young, mature, suspended) =
+                row.map_err(err)?;
             if let Some(d) = by_deck.get_mut(&deck_id) {
                 d.total_cards = total;
                 d.new_count = new_count;
                 d.due_today = due;
+                d.learning_count = learning;
+                d.young_count = young;
+                d.mature_count = mature;
+                d.suspended_count = suspended;
             }
         }
     }

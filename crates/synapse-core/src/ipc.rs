@@ -363,6 +363,10 @@ pub struct DeckStat {
     pub total_cards: u32,
     pub due_today: u32,
     pub new_count: u32,
+    pub learning_count: u32,
+    pub young_count: u32,
+    pub mature_count: u32,
+    pub suspended_count: u32,
     /// True retention over the last 30 days, as a percentage (0-100).
     pub retention_pct: f64,
     pub reviews_7d: u32,

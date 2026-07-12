@@ -4,7 +4,17 @@ import type { DeckStat } from "@synapse/ipc-types";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "./ExportButton";
 
-type SortKey = "name" | "total_cards" | "due_today" | "new_count" | "retention_pct" | "reviews_7d";
+type SortKey =
+  | "name"
+  | "total_cards"
+  | "due_today"
+  | "new_count"
+  | "learning_count"
+  | "young_count"
+  | "mature_count"
+  | "suspended_count"
+  | "retention_pct"
+  | "reviews_7d";
 
 interface DeckNode extends DeckStat {
   children: DeckNode[];
@@ -32,12 +42,20 @@ function buildTree(rows: DeckStat[]): DeckNode[] {
     let due = node.due_today;
     let newCount = node.new_count;
     let reviews7d = node.reviews_7d;
+    let learning = node.learning_count;
+    let young = node.young_count;
+    let mature = node.mature_count;
+    let suspended = node.suspended_count;
     for (const child of node.children) {
       const r = rollup(child);
       total += r.total_cards;
       due += r.due_today;
       newCount += r.new_count;
       reviews7d += r.reviews_7d;
+      learning += r.learning_count;
+      young += r.young_count;
+      mature += r.mature_count;
+      suspended += r.suspended_count;
     }
     node.rollup = {
       ...node,
@@ -45,6 +63,10 @@ function buildTree(rows: DeckStat[]): DeckNode[] {
       due_today: due,
       new_count: newCount,
       reviews_7d: reviews7d,
+      learning_count: learning,
+      young_count: young,
+      mature_count: mature,
+      suspended_count: suspended,
     };
     return node.rollup;
   }
@@ -125,6 +147,10 @@ export function DeckTable({
     { key: "total_cards", label: "Cards" },
     { key: "due_today", label: "Due" },
     { key: "new_count", label: "New" },
+    { key: "learning_count", label: "Learning" },
+    { key: "young_count", label: "Young" },
+    { key: "mature_count", label: "Mature" },
+    { key: "suspended_count", label: "Suspended" },
     { key: "retention_pct", label: "Retention" },
     { key: "reviews_7d", label: "Reviews (7d)" },
   ];
@@ -185,6 +211,10 @@ export function DeckTable({
               <td className="py-1.5 pr-3 text-right tabular-nums">{node.rollup.total_cards}</td>
               <td className="py-1.5 pr-3 text-right tabular-nums">{node.rollup.due_today}</td>
               <td className="py-1.5 pr-3 text-right tabular-nums">{node.rollup.new_count}</td>
+              <td className="py-1.5 pr-3 text-right tabular-nums">{node.rollup.learning_count}</td>
+              <td className="py-1.5 pr-3 text-right tabular-nums">{node.rollup.young_count}</td>
+              <td className="py-1.5 pr-3 text-right tabular-nums">{node.rollup.mature_count}</td>
+              <td className="py-1.5 pr-3 text-right tabular-nums">{node.rollup.suspended_count}</td>
               <td className="py-1.5 pr-3 text-right tabular-nums">
                 {node.total_cards > 0 ? `${node.retention_pct.toFixed(0)}%` : "—"}
               </td>
