@@ -77,7 +77,7 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
 
   const answerMut = useMutation({
     mutationFn: ({ cardId, rating }: { cardId: number; rating: RatingValue }) =>
-      ipc.answerCard(cardId, rating, deckId),
+      ipc.answerCard(cardId, rating, deckId, Date.now() - shownAtRef.current),
     onSuccess: (next) => {
       queryClient.setQueryData(queryKeys.queue(String(deckId)), next ?? null);
       setRevealed(false);
@@ -120,9 +120,11 @@ function Session({ deckId, onExit }: { deckId: number; onExit: () => void }) {
   // in the document order the render engine's unified queue reports.
   const [queueIdx, setQueueIdx] = useState(-1);
   const cardKey = card?.card_id ?? -1;
+  const shownAtRef = useRef(Date.now());
 
   useEffect(() => {
     setTypedAnswer("");
+    shownAtRef.current = Date.now();
   }, [cardKey]);
 
   useEffect(() => {

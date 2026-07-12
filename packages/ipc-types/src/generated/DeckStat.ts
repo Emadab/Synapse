@@ -3,7 +3,7 @@
 /**
  * Per-deck rollup row for the stats deck breakdown table.
  */
-export type DeckStat = { deck_id: number, name: string, parent_id: number | null, total_cards: number, due_today: number, new_count: number, learning_count: number, young_count: number, mature_count: number, suspended_count: number,
+export type DeckStat = { deck_id: number, name: string, parent_id: number | null, total_cards: number, due_today: number, new_count: number, learning_count: number, young_count: number, mature_count: number, suspended_count: number, 
 /**
  * True retention over the last 30 days, as a percentage (0-100).
  */

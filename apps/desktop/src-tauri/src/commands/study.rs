@@ -28,6 +28,7 @@ pub fn answer_card(
     card_id: i64,
     rating: u8,
     deck_id: i64,
+    time_ms: i64,
 ) -> IpcResult<Option<StudyCardDto>> {
     let rating = rating_from(rating)?;
     let card = collection.study_card(card_id)?.ok_or_else(|| IpcError {
@@ -65,7 +66,7 @@ pub fn answer_card(
         interval: i64::from(outcome.next.interval_days),
         last_interval: i64::from(card.state.interval_days),
         ease_factor: i64::from(outcome.next.ease_milli),
-        taken_ms: 0,
+        taken_ms: time_ms.clamp(0, 60_000),
         review_kind,
     };
     collection.apply_answer(
