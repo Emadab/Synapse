@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Loader2, Wrench } from "lucide-react";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Button } from "@/components/ui/button";
 import { useTheme, type Theme } from "@/stores/theme";
@@ -7,6 +8,21 @@ import { ipc, isTauri, pickAndExportPackage, errorMessage } from "@/lib/ipc";
 import type { BackupInfo, PluginInfo } from "@synapse/ipc-types";
 import { pluginHost, type PluginToast } from "@/lib/pluginHost";
 import { open } from "@tauri-apps/plugin-dialog";
+
+const PERMISSION_LABELS: Record<string, string> = {
+  fs_read: "Can read your collection's files",
+  fs_write: "Can write or modify your collection's files",
+  shell_exec: "Can run commands on your computer",
+  network: "Can make network requests",
+};
+
+function permissionLabel(perm: string): string {
+  return PERMISSION_LABELS[perm] ?? perm;
+}
+
+function Spinner({ className }: { className?: string }) {
+  return <Loader2 className={"animate-spin " + (className ?? "size-3.5")} aria-hidden />;
+}
 
 function MaintenanceSection() {
   const [backupMsg, setBackupMsg] = useState<string>("");
@@ -89,7 +105,10 @@ function MaintenanceSection() {
     deleteOrphanMut.isPending;
 
   return (
-    <section className="mt-8 max-w-xl space-y-6">
+    <section
+      id="maintenance"
+      className="mt-8 max-w-xl space-y-6 rounded-lg border border-border bg-accent/20 p-4"
+    >
       <div>
         <h2 className="text-sm font-medium">Maintenance</h2>
         <p className="text-sm text-muted-foreground">Backups, integrity, and media cleanup.</p>
@@ -99,9 +118,24 @@ function MaintenanceSection() {
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" disabled={busy} onClick={() => backupMut.mutate()}>
+            {backupMut.isPending && <Spinner />}
             {backupMut.isPending ? "Backing up…" : "Backup now"}
           </Button>
-          {backupMsg && <span className="text-sm text-muted-foreground">{backupMsg}</span>}
+          {backupMsg && (
+            <span className="text-sm text-muted-foreground" aria-live="polite">
+              {backupMsg}
+              {backupMut.isError && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-2 h-6 px-2 text-xs"
+                  onClick={() => backupMut.mutate()}
+                >
+                  Retry
+                </Button>
+              )}
+            </span>
+          )}
         </div>
         {(backupsQuery.data ?? []).length > 0 && (
           <ul className="rounded-lg border border-border divide-y divide-border text-sm">
@@ -147,6 +181,7 @@ function MaintenanceSection() {
                 disabled={restoreMut.isPending}
                 onClick={() => restoreMut.mutate(restoreConfirm)}
               >
+                {restoreMut.isPending && <Spinner />}
                 {restoreMut.isPending ? "Restoring…" : "Yes, restore"}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setRestoreConfirm(null)}>
@@ -161,14 +196,17 @@ function MaintenanceSection() {
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" disabled={busy} onClick={() => integrityMut.mutate()}>
+            {integrityMut.isPending && <Spinner />}
             {integrityMut.isPending ? "Checking…" : "Check integrity"}
           </Button>
           {integrityResult.length === 0 && integrityMut.isSuccess && (
-            <span className="text-sm text-green-600 dark:text-green-400">Database is healthy.</span>
+            <span className="text-sm text-green-600 dark:text-green-400" aria-live="polite">
+              Database is healthy.
+            </span>
           )}
         </div>
         {integrityResult.length > 0 && (
-          <ul className="text-sm text-destructive space-y-0.5">
+          <ul className="text-sm text-destructive space-y-0.5" aria-live="polite">
             {integrityResult.map((e, i) => (
               <li key={i}>{e}</li>
             ))}
@@ -179,21 +217,40 @@ function MaintenanceSection() {
       {/* Optimize */}
       <div className="flex items-center gap-2">
         <Button size="sm" variant="outline" disabled={busy} onClick={() => optimizeMut.mutate()}>
+          {optimizeMut.isPending && <Spinner />}
           {optimizeMut.isPending ? "Optimizing…" : "Optimize database"}
         </Button>
-        {optimizeMsg && <span className="text-sm text-muted-foreground">{optimizeMsg}</span>}
+        {optimizeMsg && (
+          <span className="text-sm text-muted-foreground" aria-live="polite">
+            {optimizeMsg}
+            {optimizeMut.isError && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-2 h-6 px-2 text-xs"
+                onClick={() => optimizeMut.mutate()}
+              >
+                Retry
+              </Button>
+            )}
+          </span>
+        )}
       </div>
 
       {/* Media */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" disabled={busy} onClick={() => mediaMut.mutate()}>
+            {mediaMut.isPending && <Spinner />}
             {mediaMut.isPending ? "Scanning…" : "Check media"}
           </Button>
           {mediaResult &&
             mediaResult.orphan_files.length === 0 &&
             mediaResult.missing_files.length === 0 && (
-              <span className="text-sm text-green-600 dark:text-green-400">
+              <span
+                className="text-sm text-green-600 dark:text-green-400"
+                aria-live="polite"
+              >
                 All media files are consistent.
               </span>
             )}
@@ -204,15 +261,13 @@ function MaintenanceSection() {
               {mediaResult.orphan_files.length > 0 && (
                 <div className="space-y-2">
                   <p className="font-medium text-amber-600 dark:text-amber-400">
-                    Orphan files ({mediaResult.orphan_files.length}) — on disk but not used:
+                    Orphan files ({mediaResult.orphan_files.length}) — on disk but not referenced
+                    by any note:
                   </p>
-                  <ul className="text-xs text-muted-foreground pl-3 space-y-0.5">
-                    {mediaResult.orphan_files.slice(0, 20).map((f) => (
+                  <ul className="max-h-48 overflow-auto text-xs text-muted-foreground pl-3 space-y-0.5">
+                    {mediaResult.orphan_files.map((f) => (
                       <li key={f}>{f}</li>
                     ))}
-                    {mediaResult.orphan_files.length > 20 && (
-                      <li>…and {mediaResult.orphan_files.length - 20} more</li>
-                    )}
                   </ul>
                   {!deleteOrphanConfirm ? (
                     <Button
@@ -230,6 +285,11 @@ function MaintenanceSection() {
                         Delete {mediaResult.orphan_files.length} orphan file
                         {mediaResult.orphan_files.length === 1 ? "" : "s"}?
                       </p>
+                      <ul className="max-h-32 overflow-auto text-xs text-muted-foreground pl-3 space-y-0.5">
+                        {mediaResult.orphan_files.map((f) => (
+                          <li key={f}>{f}</li>
+                        ))}
+                      </ul>
                       <p className="text-xs text-muted-foreground">This cannot be undone.</p>
                       <div className="flex gap-2">
                         <Button
@@ -238,6 +298,7 @@ function MaintenanceSection() {
                           disabled={deleteOrphanMut.isPending}
                           onClick={() => deleteOrphanMut.mutate(mediaResult.orphan_files)}
                         >
+                          {deleteOrphanMut.isPending && <Spinner />}
                           {deleteOrphanMut.isPending ? "Deleting…" : "Yes, delete"}
                         </Button>
                         <Button
@@ -258,13 +319,10 @@ function MaintenanceSection() {
                     Missing files ({mediaResult.missing_files.length}) — referenced in notes but not
                     on disk:
                   </p>
-                  <ul className="text-xs text-muted-foreground pl-3 space-y-0.5">
-                    {mediaResult.missing_files.slice(0, 20).map((f) => (
+                  <ul className="max-h-48 overflow-auto text-xs text-muted-foreground pl-3 space-y-0.5">
+                    {mediaResult.missing_files.map((f) => (
                       <li key={f}>{f}</li>
                     ))}
-                    {mediaResult.missing_files.length > 20 && (
-                      <li>…and {mediaResult.missing_files.length - 20} more</li>
-                    )}
                   </ul>
                 </div>
               )}
@@ -349,7 +407,10 @@ function PluginManagerSection() {
       </div>
 
       {toast && (
-        <div className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary border border-primary/20">
+        <div
+          className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary border border-primary/20"
+          aria-live="polite"
+        >
           {toast}
         </div>
       )}
@@ -375,6 +436,10 @@ function PluginManagerSection() {
                   variant={p.enabled ? "default" : "outline"}
                   disabled={loadingIds.has(p.id)}
                   onClick={async () => {
+                    if (!p.enabled && p.permissions.length > 0) {
+                      const summary = p.permissions.map((perm) => `• ${permissionLabel(perm)}`).join("\n");
+                      if (!window.confirm(`"${p.name}" requests:\n\n${summary}\n\nAllow?`)) return;
+                    }
                     markLoading(p.id, true);
                     try {
                       if (p.enabled) {
@@ -387,7 +452,8 @@ function PluginManagerSection() {
                     }
                   }}
                 >
-                  {loadingIds.has(p.id) ? "…" : p.enabled ? "Enabled" : "Enable"}
+                  {loadingIds.has(p.id) && <Spinner />}
+                  {loadingIds.has(p.id) ? "" : p.enabled ? "Enabled" : "Enable"}
                 </Button>
               </div>
               {p.description && <p className="text-xs text-muted-foreground">{p.description}</p>}
@@ -396,6 +462,7 @@ function PluginManagerSection() {
                   {p.permissions.map((perm) => (
                     <span
                       key={perm}
+                      title={permissionLabel(perm)}
                       className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground"
                     >
                       {perm}
@@ -414,6 +481,7 @@ function PluginManagerSection() {
         disabled={installMut.isPending}
         onClick={() => installMut.mutate()}
       >
+        {installMut.isPending && <Spinner />}
         {installMut.isPending ? "Installing…" : "Install plugin…"}
       </Button>
 
@@ -496,10 +564,13 @@ function UpdateSection() {
         </p>
       </div>
       <Button size="sm" variant="outline" disabled={checking} onClick={checkForUpdate}>
+        {checking && <Spinner />}
         {checking ? "Checking…" : "Check for updates"}
       </Button>
       {result?.kind === "up-to-date" && (
-        <p className="text-sm text-green-600 dark:text-green-400">Synapse is up to date.</p>
+        <p className="text-sm text-green-600 dark:text-green-400" aria-live="polite">
+          Synapse is up to date.
+        </p>
       )}
       {result?.kind === "available" && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2 text-sm">
@@ -537,7 +608,11 @@ function RolloverSection() {
 
   return (
     <div className="flex items-center gap-3">
-      <label htmlFor="rollover-hour" className="text-sm">
+      <label
+        htmlFor="rollover-hour"
+        className="text-sm"
+        title="New cards, reviews, and daily limits reset at this hour each day"
+      >
         Day starts at
       </label>
       <select
@@ -553,7 +628,11 @@ function RolloverSection() {
           </option>
         ))}
       </select>
-      {msg && <span className="text-sm text-muted-foreground">{msg}</span>}
+      {msg && (
+        <span className="text-sm text-muted-foreground" aria-live="polite">
+          {msg}
+        </span>
+      )}
     </div>
   );
 }
@@ -581,19 +660,38 @@ export function SettingsScreen() {
 
   return (
     <div className="flex h-full flex-col">
-      <ScreenHeader title="Settings" description="Preferences and appearance." />
+      <ScreenHeader
+        title="Settings"
+        description="Preferences and appearance."
+        actions={
+          tauri ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                document.getElementById("maintenance")?.scrollIntoView({ behavior: "smooth" })
+              }
+            >
+              <Wrench className="size-3.5" aria-hidden />
+              Maintenance
+            </Button>
+          ) : undefined
+        }
+      />
       <div className="flex-1 overflow-auto px-8 py-6">
         <section className="max-w-xl space-y-3">
           <div>
             <h2 className="text-sm font-medium">Appearance</h2>
             <p className="text-sm text-muted-foreground">Choose how Synapse looks.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2" role="radiogroup" aria-label="Theme">
             {themes.map((option) => (
               <Button
                 key={option.value}
                 variant={theme === option.value ? "default" : "outline"}
                 size="sm"
+                role="radio"
+                aria-checked={theme === option.value}
                 onClick={() => setTheme(option.value)}
               >
                 {option.label}
@@ -636,13 +734,18 @@ export function SettingsScreen() {
                   }
                 }}
               >
+                {exportState === "busy" && <Spinner />}
                 {exportState === "busy" ? "Exporting…" : "Export .apkg"}
               </Button>
               {exportState === "done" && (
-                <span className="text-sm text-muted-foreground">Exported.</span>
+                <span className="text-sm text-muted-foreground" aria-live="polite">
+                  Exported.
+                </span>
               )}
               {exportState !== "idle" && exportState !== "busy" && exportState !== "done" && (
-                <span className="text-sm text-destructive">{exportState}</span>
+                <span className="text-sm text-destructive" aria-live="polite">
+                  {exportState}
+                </span>
               )}
             </div>
           </section>
