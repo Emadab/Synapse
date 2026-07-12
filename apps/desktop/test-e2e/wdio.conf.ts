@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appBinary = path.resolve(
   __dirname,
-  "../../../target/release/synapse" + (process.platform === "win32" ? ".exe" : ""),
+  "../../../target/release/desktop" + (process.platform === "win32" ? ".exe" : ""),
 );
 
 export const config: Options.Testrunner = {
