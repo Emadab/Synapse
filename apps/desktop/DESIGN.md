@@ -90,6 +90,7 @@ Synapse looks like a well-calibrated instrument, not a decorated app. Every surf
 This system explicitly rejects Anki's cluttered, inconsistent, dated interface and rejects gamified study-app conventions in equal measure — no mascots, no cartoonish celebration, no forced streak confetti. Confidence here is earned through consistency and restraint, not decoration.
 
 **Key Characteristics:**
+
 - Single-hue indigo brand signal (#4A5FD1 light / #7089DB dark), used sparingly and consistently for interactive/primary state
 - Cool, low-chroma neutral shell (blue-gray, not warm) in both themes
 - Structural glass: blur + saturate reserved for chrome that separates persistent UI from scrollable content, never applied decoratively
@@ -101,21 +102,25 @@ This system explicitly rejects Anki's cluttered, inconsistent, dated interface a
 A single indigo signal against a cool-gray instrument shell; color is functional, not atmospheric.
 
 ### Primary
+
 - **Instrument Indigo** (`#4A5FD1` light / `#7089DB` dark): the one interactive/brand color — primary buttons, active nav state, focus rings, links. Consistent across light and dark, lightened in dark mode for legibility rather than recolored.
 
 ### Neutral
+
 - **Panel White / Panel Ink** (`#FCFCFD` background light / `#0D1017` background dark): the base shell. Cool, almost-imperceptible blue tint, never warm.
 - **Instrument Text** (`#171B26` foreground light / `#E7E9EE` foreground dark): body and heading text, tuned for AA contrast against the panel background.
 - **Hairline Border** (`#EBECF0` light / equivalent low-chroma slate in dark): dividers, card edges, input strokes — always subtle, never a design statement.
 - **Instrument Gray** (`#6B7280`): muted/secondary text — timestamps, helper copy, disabled labels.
 
 ### Semantic (review state — fixed, never reassigned)
+
 - **Again** (`#EF4444`): failed recall.
 - **Hard** (`#F59E0B`): recalled with difficulty.
 - **Good** (`#22C55E`): recalled correctly.
 - **Easy** (`#3B82F6`): recalled with no effort.
 
 ### Named Rules
+
 **The One Signal Rule.** Indigo is the only brand color and it means one thing: interactive or primary. It is never used decoratively (no gradients, no indigo-tinted backgrounds for atmosphere).
 
 **The Fixed Palette Rule.** Chart series and answer-button colors (again/hard/good/easy, chart-1 through chart-6) are assigned by role, not by index or filter state. A color always means the same state across every screen.
@@ -128,12 +133,14 @@ A single indigo signal against a cool-gray instrument shell; color is functional
 **Character:** A single, precise system-adjacent sans across the entire app — no display serif, no decorative pairing. The typeface itself carries the "instrument" feel: neutral, legible, fast to scan.
 
 ### Hierarchy
+
 - **Headline** (600, `clamp(1.25rem, 2vw, 1.75rem)`, 1.2 line-height, -0.02em tracking): screen titles, deck names, section headers. Tight tracking keeps headlines dense rather than airy.
 - **Body** (400, 14px, 1.5 line-height): default UI text, card content, list rows.
 - **Label** (500, 12px, 1.3 line-height): buttons, badges, form labels, chart legends.
 - **Mono/Numeric** (400, 13px, tabular-nums): review counts, stats figures, timers — anything where digits must align in a column.
 
 ### Named Rules
+
 **The One Family Rule.** Inter carries every role via weight and size, never a second typeface. A display serif or script face would contradict the instrument-panel premise.
 
 ## 4. Elevation
@@ -141,11 +148,13 @@ A single indigo signal against a cool-gray instrument shell; color is functional
 Synapse is flat at rest. Depth is not conveyed with drop shadows on cards or buttons — it's conveyed structurally, through translucent "glass" chrome that separates persistent UI (titlebar, sidebar, sticky headers, floating panels) from the content scrolling beneath it. Glass is functional layering, not a decorative effect; it exists only where content needs to visibly pass underneath fixed UI.
 
 ### Shadow Vocabulary
+
 - **Glass Chrome** (`backdrop-filter: blur(16px) saturate(1.4)` over `hsl(var(--glass-chrome-bg))`, ~72% opacity): titlebar, sidebar, sticky screen headers.
 - **Glass Panel** (`backdrop-filter: blur(24px) saturate(1.5)` over `hsl(var(--glass-panel-bg))`, ~82% opacity): command palette, dialogs, popovers, the study HUD — deeper blur than chrome since these sit further above content.
 - Both fall back to a fully solid surface color when `backdrop-filter` isn't supported — never a broken transparent panel.
 
 ### Named Rules
+
 **The Structural Glass Rule.** Blur and saturation are reserved for chrome that must stay legible over arbitrary scrolled content. Cards, buttons, and static panels stay flat; glass is never added purely for atmosphere.
 
 **The Vignette Exception.** Focus mode's radial vignette (`radial-gradient(ellipse at center, transparent 45%, hsl(var(--background)) 100%)` in `StudySessionScreen.tsx`) is the one deliberate gradient in the system. It exists to pull attention toward the card when chrome is hidden — a functional focus cue, not decoration — and stays a single neutral hue (the background color fading to itself) rather than a color or brand gradient. This is the only sanctioned exception to the no-gradient rule below; it does not open the door to gradients elsewhere.
@@ -155,12 +164,14 @@ Synapse is flat at rest. Depth is not conveyed with drop shadows on cards or but
 Buttons, inputs, and cards read as tight and confident: small radii, crisp hairline borders, and feedback that lands immediately on hover and focus — nothing loose, bouncy, or delayed.
 
 ### Buttons
+
 - **Shape:** small radius (`4px`, `rounded.sm`), never pill-shaped.
 - **Primary:** Instrument Indigo background, white text, `8px 16px` padding.
 - **Hover / Focus:** background steps one shade darker (`#3E51B8`) on hover; `2px solid` themed ring at `2px` offset on focus-visible, replacing the browser default outline everywhere.
 - **Secondary / Ghost:** neutral background (`#F1F2F6` light, dark-mode equivalent secondary token), foreground text, same radius and padding as primary — differs by fill, not by shape.
 
 ### Cards / Containers
+
 - **Corner Style:** `12px` radius (`rounded.lg`).
 - **Background:** solid card surface color (`#FFFFFF` light / dark card token) — no gradients, no glass.
 - **Shadow Strategy:** none at rest; see Elevation. Cards are flat.
@@ -168,19 +179,23 @@ Buttons, inputs, and cards read as tight and confident: small radii, crisp hairl
 - **Internal Padding:** `16px` (`spacing.md`).
 
 ### Inputs / Fields
+
 - **Style:** `1px` hairline border, solid background, `4px` radius, `8px 12px` padding.
 - **Focus:** border shifts to the ring color, `2px` focus-visible outline, no glow or shadow.
 - **Error / Disabled:** destructive token for error state (`hsl(var(--destructive))`); disabled drops to muted foreground with reduced opacity, never a separate gray-out overlay.
 
 ### Navigation
+
 - Sidebar and titlebar use Glass Chrome (see Elevation), sit persistently, and use Instrument Indigo for the active-item state only — inactive items stay in muted foreground until hovered or selected.
 
 ### Review Answer Buttons (signature component)
+
 The four-button row (Again / Hard / Good / Easy) is the app's most-repeated interaction. Each button carries its fixed semantic color as a top-level fill, not a subtle tint, so the choice is legible at a glance during fast review — the one place in the system where color is allowed to be loud, because speed and clarity here matter more than restraint.
 
 ## 6. Do's and Don'ts
 
 ### Do:
+
 - **Do** use Instrument Indigo (`#4A5FD1` / `#7089DB`) as the only brand/interactive color, consistently across light and dark.
 - **Do** keep glass (`blur` + `saturate`) structural — chrome only, never decorative panels or cards.
 - **Do** keep radii small (`4–16px`) and borders crisp — the "tight and confident" component feel.
@@ -188,6 +203,7 @@ The four-button row (Again / Hard / Good / Easy) is the app's most-repeated inte
 - **Do** keep chart and review-state colors fixed by role (again/hard/good/easy, chart-1..6) — never reassign by index or filter.
 
 ### Don't:
+
 - **Don't** replicate Anki's cluttered, inconsistent, dated interface — no dense unstyled toolbars, no inconsistent spacing, no mismatched dialog chrome.
 - **Don't** add gamification: no mascots, no cartoonish confetti, no forced streak celebrations. Synapse's confidence is quiet, not performative.
 - **Don't** use `border-left`/`border-right` as a colored accent stripe on cards or list rows.

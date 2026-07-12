@@ -247,10 +247,7 @@ function MaintenanceSection() {
           {mediaResult &&
             mediaResult.orphan_files.length === 0 &&
             mediaResult.missing_files.length === 0 && (
-              <span
-                className="text-sm text-green-600 dark:text-green-400"
-                aria-live="polite"
-              >
+              <span className="text-sm text-green-600 dark:text-green-400" aria-live="polite">
                 All media files are consistent.
               </span>
             )}
@@ -261,8 +258,8 @@ function MaintenanceSection() {
               {mediaResult.orphan_files.length > 0 && (
                 <div className="space-y-2">
                   <p className="font-medium text-amber-600 dark:text-amber-400">
-                    Orphan files ({mediaResult.orphan_files.length}) — on disk but not referenced
-                    by any note:
+                    Orphan files ({mediaResult.orphan_files.length}) — on disk but not referenced by
+                    any note:
                   </p>
                   <ul className="max-h-48 overflow-auto text-xs text-muted-foreground pl-3 space-y-0.5">
                     {mediaResult.orphan_files.map((f) => (
@@ -437,7 +434,9 @@ function PluginManagerSection() {
                   disabled={loadingIds.has(p.id)}
                   onClick={async () => {
                     if (!p.enabled && p.permissions.length > 0) {
-                      const summary = p.permissions.map((perm) => `• ${permissionLabel(perm)}`).join("\n");
+                      const summary = p.permissions
+                        .map((perm) => `• ${permissionLabel(perm)}`)
+                        .join("\n");
                       if (!window.confirm(`"${p.name}" requests:\n\n${summary}\n\nAllow?`)) return;
                     }
                     markLoading(p.id, true);

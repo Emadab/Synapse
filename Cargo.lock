@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "desktop"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "percent-encoding",
  "serde",
@@ -3492,7 +3492,7 @@ dependencies = [
 
 [[package]]
 name = "synapse-ankifmt"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rusqlite",
  "serde_json",
@@ -3505,7 +3505,7 @@ dependencies = [
 
 [[package]]
 name = "synapse-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3515,7 +3515,7 @@ dependencies = [
 
 [[package]]
 name = "synapse-db"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "regex",
  "rusqlite",
@@ -3528,14 +3528,14 @@ dependencies = [
 
 [[package]]
 name = "synapse-media"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "synapse-core",
 ]
 
 [[package]]
 name = "synapse-plugin"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3547,7 +3547,7 @@ dependencies = [
 
 [[package]]
 name = "synapse-render"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "regex",
  "synapse-core",
@@ -3555,14 +3555,14 @@ dependencies = [
 
 [[package]]
 name = "synapse-scheduler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "synapse-core",
 ]
 
 [[package]]
 name = "synapse-search"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rusqlite",
  "synapse-core",

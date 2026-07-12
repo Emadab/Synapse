@@ -94,8 +94,7 @@ pub fn stats(
     let tz_off_ms = i64::from(tz_offset_minutes) * 60_000;
     let rollover_ms = i64::from(rollover_hour) * 3_600_000;
     let day = day_expr("r.id", tz_off_ms, rollover_ms, created_ms);
-    let first_answer =
-        first_answer_clause(&day_expr("id", tz_off_ms, rollover_ms, created_ms));
+    let first_answer = first_answer_clause(&day_expr("id", tz_off_ms, rollover_ms, created_ms));
 
     // Reviews per local/rollover-aligned day (all time, deck-filtered) — heatmap + streaks.
     {
@@ -442,8 +441,7 @@ fn deck_stats(
     {
         let retention_cutoff = now_ms - RETENTION_30D_MS;
         let reviews_cutoff = now_ms - REVIEWS_7D_MS;
-        let first_answer =
-            first_answer_clause(&day_expr("id", tz_off_ms, rollover_ms, created_ms));
+        let first_answer = first_answer_clause(&day_expr("id", tz_off_ms, rollover_ms, created_ms));
         let sql = format!(
             "SELECT c.deck_id,
                     SUM(CASE WHEN r.id >= {reviews_cutoff} THEN 1 ELSE 0 END),
@@ -631,7 +629,17 @@ mod tests {
         storage.import(&model()).unwrap();
 
         let s = storage
-            .stats(None, Some(30), 0, 4, &FSRS6_DEFAULT_WEIGHTS, 90.0, 0, NOW, 0)
+            .stats(
+                None,
+                Some(30),
+                0,
+                4,
+                &FSRS6_DEFAULT_WEIGHTS,
+                90.0,
+                0,
+                NOW,
+                0,
+            )
             .unwrap();
         assert_eq!(s.total_reviews, 1);
         assert_eq!(s.studied_days, 1);
@@ -717,7 +725,11 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(s.reviews.len(), 1, "both reviews should share one day bucket");
+        assert_eq!(
+            s.reviews.len(),
+            1,
+            "both reviews should share one day bucket"
+        );
         assert_eq!(s.reviews[0].count, 2);
         assert_eq!(s.studied_days, 1);
     }

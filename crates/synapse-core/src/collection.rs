@@ -355,7 +355,11 @@ impl Collection {
                 None => ids.first().copied(),
             }
         };
-        let learning_ready: Vec<i64> = learning.iter().copied().filter(|id| !in_grace(id)).collect();
+        let learning_ready: Vec<i64> = learning
+            .iter()
+            .copied()
+            .filter(|id| !in_grace(id))
+            .collect();
         if !learning_ready.is_empty() {
             return Ok(soonest_due(&learning_ready));
         }
@@ -401,7 +405,11 @@ impl Collection {
                         .copied()
                         .min_by_key(|id| due.get(id).copied().unwrap_or(i64::MAX))
                 };
-                let ready: Vec<i64> = fallback.iter().copied().filter(|id| !in_grace(id)).collect();
+                let ready: Vec<i64> = fallback
+                    .iter()
+                    .copied()
+                    .filter(|id| !in_grace(id))
+                    .collect();
                 Ok(pick_soonest(&ready).or_else(|| pick_soonest(&fallback)))
             }
         }
@@ -1927,7 +1935,11 @@ mod tests {
     #[test]
     fn learn_ahead_skips_in_grace_card_for_a_later_one() {
         let storage = FakeStorage::default();
-        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage
+            .decks
+            .lock()
+            .unwrap()
+            .push(deck(1, "Spanish", None, false));
         storage.queues.lock().unwrap().insert(
             1,
             crate::ports::StudyQueue {
@@ -1935,7 +1947,11 @@ mod tests {
                 ..Default::default()
             },
         );
-        storage.due_ms.lock().unwrap().extend([(101, 2_000), (102, 5_000)]);
+        storage
+            .due_ms
+            .lock()
+            .unwrap()
+            .extend([(101, 2_000), (102, 5_000)]);
         // 101 was just answered (in grace); 102 has never been answered.
         storage.last_answered.lock().unwrap().insert(101, 1_000);
 
@@ -1946,7 +1962,11 @@ mod tests {
     #[test]
     fn learn_ahead_returns_sole_candidate_even_in_grace() {
         let storage = FakeStorage::default();
-        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage
+            .decks
+            .lock()
+            .unwrap()
+            .push(deck(1, "Spanish", None, false));
         storage.queues.lock().unwrap().insert(
             1,
             crate::ports::StudyQueue {
@@ -1964,7 +1984,11 @@ mod tests {
     #[test]
     fn learning_due_now_skips_in_grace_card_for_another_due_card() {
         let storage = FakeStorage::default();
-        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage
+            .decks
+            .lock()
+            .unwrap()
+            .push(deck(1, "Spanish", None, false));
         storage.queues.lock().unwrap().insert(
             1,
             crate::ports::StudyQueue {
@@ -1981,7 +2005,11 @@ mod tests {
     #[test]
     fn learning_due_now_in_grace_defers_to_new_card() {
         let storage = FakeStorage::default();
-        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage
+            .decks
+            .lock()
+            .unwrap()
+            .push(deck(1, "Spanish", None, false));
         storage.queues.lock().unwrap().insert(
             1,
             crate::ports::StudyQueue {
@@ -1999,7 +2027,11 @@ mod tests {
     #[test]
     fn learning_due_now_in_grace_is_shown_when_it_is_the_only_card() {
         let storage = FakeStorage::default();
-        storage.decks.lock().unwrap().push(deck(1, "Spanish", None, false));
+        storage
+            .decks
+            .lock()
+            .unwrap()
+            .push(deck(1, "Spanish", None, false));
         storage.queues.lock().unwrap().insert(
             1,
             crate::ports::StudyQueue {

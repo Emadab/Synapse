@@ -119,7 +119,8 @@
       "calt" 1;
   }
 
-  body :where(*):not(
+  body
+    :where(*):not(
       input,
       textarea,
       [contenteditable="true"],

@@ -346,8 +346,9 @@ pub fn search_cards(
     let offset_idx = params.len() + 1;
     params.push(Param::Int(offset));
 
-    let sql =
-        format!("{BASE_SQL}{where_clause} ORDER BY c.id DESC LIMIT ?{limit_idx} OFFSET ?{offset_idx}");
+    let sql = format!(
+        "{BASE_SQL}{where_clause} ORDER BY c.id DESC LIMIT ?{limit_idx} OFFSET ?{offset_idx}"
+    );
 
     let mut stmt = conn.prepare(&sql).map_err(err)?;
     let rows = stmt
@@ -586,7 +587,9 @@ mod tests {
     #[test]
     fn is_new_filter() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("is:new", 0, 1_700_000_000_000, 100, 0).unwrap();
+        let rows = s
+            .search_cards("is:new", 0, 1_700_000_000_000, 100, 0)
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].sort_field, "hello");
     }
@@ -614,7 +617,9 @@ mod tests {
     #[test]
     fn flag_filter() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("flag:1", 0, 1_700_000_000_000, 100, 0).unwrap();
+        let rows = s
+            .search_cards("flag:1", 0, 1_700_000_000_000, 100, 0)
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].flags, 1);
     }
@@ -632,7 +637,9 @@ mod tests {
     #[test]
     fn text_search() {
         let (s, _, _) = setup();
-        let rows = s.search_cards("hello", 0, 1_700_000_000_000, 100, 0).unwrap();
+        let rows = s
+            .search_cards("hello", 0, 1_700_000_000_000, 100, 0)
+            .unwrap();
         assert_eq!(rows.len(), 1);
     }
 
@@ -733,7 +740,9 @@ mod tests {
             .unwrap();
         // Move card1 to same deck (no-op but exercises the path).
         s.move_cards_to_deck(&[card1], new_deck).unwrap();
-        let rows = s.search_cards("is:new", 0, 1_700_000_000_000, 100, 0).unwrap();
+        let rows = s
+            .search_cards("is:new", 0, 1_700_000_000_000, 100, 0)
+            .unwrap();
         assert_eq!(rows[0].deck, "Default");
     }
 }
